@@ -61,8 +61,9 @@ cp .env.example .env.local
 Fill in the Supabase values in `.env.local`:
 
 1. Create a project at [supabase.com](https://supabase.com).
-2. Copy the project URL, anon/publishable key, and service-role key from
-   **Project Settings → API**.
+2. Copy the project URL and publishable key (or legacy anon key), plus the
+   secret key (or legacy service-role key) from **Project Settings → API**.
+   Use `SUPABASE_SERVICE_ROLE_KEY` for either secret value.
 3. Copy the pooler connection string (port `6543`) to `DATABASE_URL` and the
    direct connection string (port `5432`) to `DATABASE_URL_DIRECT`.
 4. Set `NEXT_PUBLIC_SITE_URL=http://localhost:3000` for local development.
