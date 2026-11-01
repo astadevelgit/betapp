@@ -32,9 +32,17 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
 
 # vercel
 .vercel
+
+# supabase local
+supabase/.temp
+supabase/.branches
+
+# drizzle-kit generated diffs (Supabase migrations are the source of truth)
+/drizzle
 
 # typescript
 *.tsbuildinfo
