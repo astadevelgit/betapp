@@ -176,13 +176,13 @@ export default async function AdminDashboardPage() {
               Sync health
             </CardTitle>
             <CardDescription>
-              Recent provider jobs. Cron jobs arrive with the data layer.
+              Recent Sportmonks fixture, live-score, and odds syncs.
             </CardDescription>
           </CardHeader>
           <CardContent>
             {syncRuns.length === 0 ? (
               <div className="rounded-xl border border-dashed border-border/80 px-5 py-8 text-center text-sm text-muted-foreground">
-                No sync runs yet. The API-Football adapter is the next build.
+                No sync runs yet. Run a cron sync to populate the catalog.
               </div>
             ) : (
               <ul className="divide-y divide-border/70">

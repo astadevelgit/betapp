@@ -24,7 +24,7 @@
 | Beta | Open unlisted URL; cap 100; waitlist after; `noindex` |
 | Admin | One seeded admin; full operational controls |
 | Stack | Next.js 16.4, TypeScript, Tailwind, shadcn/ui, Supabase, Drizzle, Vercel Pro |
-| Data | API-Football (API-Sports), football only |
+| Data | Sportmonks, football only |
 | Email | Supabase Auth via Resend SMTP |
 | Observability | Sentry + PostHog + Vercel logs |
 | Revenue | None in v1 |
@@ -54,9 +54,9 @@ Supabase
   ├─ Auth (email/password, verification, reset)
   └─ Pooler (Supavisor) for serverless connections
 
-API-Football (API-Sports)
+Sportmonks
   ├─ Fixtures, competitions, teams
-  ├─ Live scores/status/events
+  ├─ Live scores/status/periods
   ├─ Pre-match odds
   └─ Final results
 
@@ -66,11 +66,11 @@ Sentry → errors; PostHog → product events
 
 ### Key principles
 
-1. **The database is the cache.** Cron syncs the provider into Postgres; client polling reads our DB, not API-Football directly. This protects the API quota.
+1. **The database is the cache.** Cron syncs the provider into Postgres; client polling reads our DB, not Sportmonks directly. This protects the API quota.
 2. **All money movement is atomic.** Bet placement, settlement, daily claims, and admin adjustments happen inside Postgres functions with row locks and idempotency keys.
 3. **Server is authoritative.** Client odds, stakes, and payouts are previews; the server validates and computes the final values.
 4. **RLS is defense-in-depth.** Server queries are explicitly scoped by user; RLS blocks direct anon access.
-5. **The provider is replaceable.** All API-Football access goes through an `OddsProvider` adapter; a managed feed can replace it later.
+5. **The provider is replaceable.** All Sportmonks access goes through an `OddsProvider` adapter; a managed feed can replace it later.
 
 ---
 
@@ -126,7 +126,7 @@ betapp/
     db/                         # drizzle schema, queries, migrations helpers
     auth/                       # requireUser, requireAdmin
     betting/                    # odds, payout, settlement, validation
-    provider/                   # api-football adapter, mapping, types
+    provider/                   # sportmonks adapter, mapping, types
     validation/                 # shared Zod schemas
     rate-limit/                 # DB-based limiter
     analytics/                  # PostHog client/server
@@ -286,7 +286,7 @@ If a value is likely to change, use `text` + `CHECK` instead. Keep provider-spec
 
 ---
 
-## 6. Provider integration (API-Football)
+## 6. Provider integration (Sportmonks)
 
 ### Adapter interface
 
@@ -295,7 +295,7 @@ interface OddsProvider {
   getCompetitions(): Promise<ProviderCompetition[]>;
   getFixtures(params: { from: string; to: string; leagueIds?: number[] }): Promise<ProviderFixture[]>;
   getLiveFixtures(): Promise<ProviderFixture[]>;
-  getOdds(fixtureId: string): Promise<ProviderOdds>;
+  getOdds(fixtureId: string): Promise<ProviderOdds | null>;
   getResults(params: { date: string }): Promise<ProviderFixture[]>;
 }
 ```
@@ -305,24 +305,25 @@ interface OddsProvider {
 | Job | Schedule | Work |
 |---|---|---|
 | `sync-fixtures` | Every 6 hours | Upcoming fixtures for selected leagues (next 7 days); upsert competitions, teams, matches |
-| `sync-odds` | Every 5 minutes | Pre-match odds for upcoming matches; upsert markets/selections; skip fresh data |
-| `sync-live` | Every minute | Live fixtures/scores/status/minute/events; update matches; flag finished |
+| `sync-odds` | Every 10 minutes | Pre-match odds for up to 8 upcoming matches; upsert markets/selections; skip fresh data |
+| `sync-live` | Every 2 minutes | Live fixtures/scores/status/periods; update matches; flag finished |
 | `settle` | Every 5 minutes | Settle open bets on finished matches |
 | `cleanup` | Daily | Purge unverified profiles >24h; prune old sync logs |
 
 ### Market mapping
 
-| API market | Our market | Selection names |
+| Sportmonks market ID | Our market | Selection names |
 |---|---|---|
-| Match Winner | `1X2` | home / draw / away |
-| Over/Under 2.5 | `OU25` | over / under |
-| Both Teams Score | `BTTS` | yes / no |
-| Double Chance | `DC` | 1X / X2 / 12 |
+| `1` Match Winner | `1X2` | home / draw / away |
+| `80` Goals Over/Under, total `2.5` | `OU25` | over / under |
+| `14` Both Teams To Score | `BTTS` | yes / no |
+| `2` Double Chance | `DC` | 1X / X2 / 12 |
 
-- Filter to line 2.5 for O/U.
+- Request `filters=markets:1,2,14,80` and filter O/U to line 2.5.
+- Pick the bookmaker with the most complete set of the four markets.
 - If a market is missing, hide it; never invent odds.
-- Store the provider's raw market/bet IDs in `metadata` for debugging.
-- Verify actual API field names and plan coverage in week 0.
+- Store provider market IDs and the selected bookmaker in metadata for debugging.
+- The free plan exposes leagues `271` and `501` only; upgrade before production.
 
 ### Reliability
 
@@ -332,7 +333,7 @@ interface OddsProvider {
 - If the provider is down, serve cached DB data and show "live updates delayed."
 - Use `FOR UPDATE SKIP LOCKED` for settlement to avoid double processing.
 - Add a `CRON_SECRET` check to every cron route.
-- Respect API quota: only selected leagues; cache; backoff on 429.
+- Respect the 180 requests/hour free-plan quota: only selected leagues; cache; backoff on 429.
 
 ---
 
@@ -433,7 +434,7 @@ interface OddsProvider {
 
 ### Secrets
 
-- `SUPABASE_SERVICE_ROLE_KEY`, `API_FOOTBALL_KEY`, `CRON_SECRET`, `RESEND_API_KEY`, `SENTRY_DSN`, `POSTHOG_KEY`.
+- `SUPABASE_SERVICE_ROLE_KEY`, `SPORTMONKS_API_TOKEN`, `CRON_SECRET`, `RESEND_API_KEY`, `SENTRY_DSN`, `POSTHOG_KEY`. `API_FOOTBALL_KEY` is an optional legacy fallback.
 - Never prefix server secrets with `NEXT_PUBLIC_`.
 - `.env.local` gitignored; Vercel env vars per environment.
 
@@ -484,7 +485,7 @@ interface OddsProvider {
 - Waitlist when beta full.
 
 ### Contract
-- API-Football adapter with recorded fixtures; mapping tests for all four markets.
+- Sportmonks adapter with recorded fixtures; mapping tests for all four markets.
 - Cron routes with mocked provider; assert DB updates and idempotency.
 
 ---
@@ -505,8 +506,8 @@ interface OddsProvider {
 4. Seed football sport, app settings, admin user.
 5. Create Vercel project; add env vars.
 6. Add `vercel.json` crons:
-   - `/api/cron/sync-live` → `* * * * *`
-   - `/api/cron/sync-odds` → `*/5 * * * *`
+   - `/api/cron/sync-live` → `*/2 * * * *`
+   - `/api/cron/sync-odds` → `*/10 * * * *`
    - `/api/cron/settle` → `*/5 * * * *`
    - `/api/cron/sync-fixtures` → `0 */6 * * *`
 7. Configure Sentry and PostHog projects.
@@ -533,7 +534,7 @@ interface OddsProvider {
 
 | Week | Focus | Deliverables | Exit criteria |
 |---|---|---|---|
-| 0 | Validation & setup | Confirm API-Football plan; create accounts; repo; schema review; design tokens | Provider covers fixtures, live, odds, results; environments ready |
+| 0 | Validation & setup | Confirm Sportmonks plan; create accounts; repo; schema review; design tokens | Provider covers fixtures, live, odds, results; environments ready |
 | 1 | Foundation | Next 16.4 app; Supabase; migrations 001–002; auth; profiles/wallets; layout | Signup, verify, login, reset work; wallet created |
 | 2 | Data & lobby | Provider adapter; fixture/odds sync; lobby; match detail; live polling | Real fixtures/odds render; live scores update every 60s |
 | 3 | Betting | Bet slip; `place_bet`; My Bets; wallet; daily claim | Single and acca placed atomically; balances correct |
@@ -560,9 +561,9 @@ Do not cut: atomic ledger, idempotency, RLS, auto-settlement tests, legal pages.
 - **Done:** signup, verification, login, logout, reset; protected route redirects.
 
 ### Epic 2 — Catalog and provider
-- API-Football adapter; fixture/odds/live sync; `sync_runs`.
+- Sportmonks adapter; fixture/odds/live sync; `sync_runs`.
 - Lobby and match detail with real data.
-- **Done:** 5+ leagues render; live scores update; missing markets hide gracefully.
+- **Done:** selected leagues render; live scores update; missing markets hide gracefully.
 
 ### Epic 3 — Betting engine
 - Bet slip store; `place_bet`; odds validation; idempotency.
@@ -597,7 +598,7 @@ Do not cut: atomic ledger, idempotency, RLS, auto-settlement tests, legal pages.
 
 | Risk | Mitigation |
 |---|---|
-| API-Football plan lacks odds/live/results at ~$20–30 | Verify in week 0; reduce leagues; fall back to The Odds API for odds |
+| Sportmonks free plan covers only 2 leagues and 180 requests/hour | Keep syncs within budget; upgrade before production; selected-league fallback |
 | Market mapping gaps | Contract tests with real payloads; hide unsupported markets; log unmapped IDs |
 | Settlement errors | Pure functions + tests + manual override + audit; daily reconciliation |
 | Provider outage | DB cache; stale banner; suspend betting on stale odds; Sentry alert |
@@ -613,8 +614,8 @@ Do not cut: atomic ledger, idempotency, RLS, auto-settlement tests, legal pages.
 
 ## 15. Immediate next steps (before coding)
 
-1. **Verify API-Football coverage.** Confirm the plan includes fixtures, live scores/events, pre-match odds, and final results for the selected leagues. Get a trial key and inspect real payloads.
-2. **Pick league coverage.** Suggested: EPL, UCL, La Liga, Serie A, Bundesliga, Ligue 1. Fewer leagues = lower cost and cleaner beta.
+1. **Verify Sportmonks coverage.** Confirm the plan includes fixtures, live scores/periods, pre-match odds, and final results for the selected leagues. The current free token exposes leagues `271` and `501`.
+2. **Pick league coverage.** The free plan is limited to the Danish Superliga and Scottish Premiership. Upgrade before production and set `SPORTMONKS_LEAGUE_IDS` to the paid-plan leagues.
 3. **Create accounts:** Supabase, Vercel Pro, Resend, Sentry, PostHog, GitHub.
 4. **Choose domain and brand.** `BetApp` is a placeholder; domain needed for Resend and deployment.
 5. **Legal review scope.** Terms, privacy, responsible play, NDPA; confirm play-money classification.

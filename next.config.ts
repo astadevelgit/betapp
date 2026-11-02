@@ -31,6 +31,18 @@ const nextConfig: NextConfig = {
   cacheComponents: true,
   partialPrefetching: true,
   poweredByHeader: false,
+  images: {
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "media.api-sports.io",
+      },
+      {
+        protocol: "https",
+        hostname: "cdn.sportmonks.com",
+      },
+    ],
+  },
   turbopack: {
     rules: {
       "*.css": {

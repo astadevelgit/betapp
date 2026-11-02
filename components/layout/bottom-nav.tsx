@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { Suspense } from "react";
 import { Home, Radio, Ticket, User, Wallet } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -15,16 +16,32 @@ const items = [
 ];
 
 export function BottomNav() {
-  const pathname = usePathname();
+  return (
+    <Suspense fallback={<BottomNavLinks pathname={null} />}>
+      <BottomNavActive />
+    </Suspense>
+  );
+}
 
+function BottomNavActive() {
+  const pathname = usePathname();
+  return <BottomNavLinks pathname={pathname} />;
+}
+
+/**
+ * Static fallback shown while `usePathname()` resolves during prerendering of
+ * dynamic routes. The active item appears once the pathname is available.
+ */
+function BottomNavLinks({ pathname }: { pathname: string | null }) {
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border/80 bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
       <div className="mx-auto grid max-w-md grid-cols-5">
         {items.map((item) => {
           const isActive =
-            item.href === "/"
+            pathname !== null &&
+            (item.href === "/"
               ? pathname === "/"
-              : pathname.startsWith(item.href);
+              : pathname.startsWith(item.href));
           const Icon = item.icon;
 
           return (

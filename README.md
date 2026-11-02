@@ -4,9 +4,9 @@ A closed-loop, play-money football sportsbook for a Nigeria-focused private
 beta. BET coins have no cash value. There are no purchases, cash-outs, prizes,
 or real-money wagers.
 
-**Status:** Week 0 foundation complete and verified against a live Supabase
-project. The fixture/odds feed, betting engine, settlement, and full admin
-operations are next.
+**Status:** Foundation, catalog, Sportmonks provider sync, lobby, and match
+detail are in place. The betting engine, settlement, and full admin operations
+are next.
 
 ## Stack
 
@@ -16,7 +16,7 @@ operations are next.
 - Supabase Postgres + Auth, `@supabase/ssr`
 - Drizzle ORM + `postgres` driver
 - Zod, React Hook Form, Zustand (installed for the bet slip)
-- Vercel Pro (cron), API-Football, Resend, Sentry, PostHog
+- Vercel Pro (cron), Sportmonks, Resend, Sentry, PostHog
 
 The full product and delivery plan is in
 [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md).
@@ -37,6 +37,13 @@ The full product and delivery plan is in
   - RLS policies and least-privilege grants
 - Drizzle schema mirror and lazy server database client.
 - Wallet page with balance, daily claim, and ledger activity.
+- Catalog schema for competitions, teams, matches, markets, and selections.
+- Sportmonks adapter for fixtures, live scores, results, and pre-match odds.
+- Protected cron sync jobs with `sync_runs` logging and rate-limit-aware
+  scheduling.
+- Public lobby, live centre, and match detail with markets and 60-second live
+  score polling.
+- Demo catalog seeder for local UI work.
 - Admin dashboard shell plus placeholders for matches, bets, users,
   transactions, settings, and audit.
 - `noindex` metadata, `X-Robots-Tag`, and baseline security headers.
@@ -71,6 +78,9 @@ Fill in the Supabase values in `.env.local`:
 3. Copy the pooler connection string (port `6543`) to `DATABASE_URL` and the
    direct connection string (port `5432`) to `DATABASE_URL_DIRECT`.
 4. Set `NEXT_PUBLIC_SITE_URL=http://localhost:3000` for local development.
+5. Add `SPORTMONKS_API_TOKEN` and set `SPORTMONKS_LEAGUE_IDS=271,501` for the
+   free plan. The provider prefers Sportmonks when this token is present.
+   `API_FOOTBALL_KEY` remains an optional legacy fallback.
 
 ### Apply the database migration
 
@@ -145,6 +155,8 @@ Open [http://localhost:3000](http://localhost:3000).
 | `npm run db:generate` | Generate Drizzle SQL diff into `drizzle/` |
 | `npm run db:studio` | Drizzle Studio |
 | `npm run seed:admin` | Create/promote the seeded admin |
+| `npm run seed:demo` | Seed demo fixtures, teams, markets, and odds |
+| `npm run seed:demo -- --clean` | Remove demo catalog rows |
 
 ## Database workflow
 
@@ -163,7 +175,7 @@ Open [http://localhost:3000](http://localhost:3000).
 | Route | Access |
 |---|---|
 | `/` | Public lobby |
-| `/live` | Public live centre placeholder |
+| `/live` | Public live centre |
 | `/waitlist` | Public waitlist |
 | `/legal` | Public beta legal placeholders |
 | `/auth/login`, `/auth/register` | Guests |
@@ -174,17 +186,33 @@ Open [http://localhost:3000](http://localhost:3000).
 ## Current blockers
 
 - Docker/psql are not installed; use a remote Supabase project for now.
-- API-Football plan coverage must be verified before the fixture adapter is
-  built.
+- The Sportmonks free plan covers only the Danish Superliga (`271`) and
+  Scottish Premiership (`501`) with 180 requests/hour. Production coverage
+  needs a paid plan or a different provider token.
 - Legal pages are beta placeholders and need Nigerian counsel review before a
   public launch.
 - **Patch Next.js 16.4.3 on Nov 3, 2026.** A security release is scheduled for
   that date; upgrade and redeploy as soon as it ships.
 
+## Provider sync
+
+Sportmonks is the preferred provider. The sync jobs normalize provider data
+into Postgres, so the lobby and live polling never call Sportmonks directly.
+
+| Job | Schedule | Free-plan budget |
+|---|---|---|
+| `sync-live` | Every 2 minutes | In-play + today's results |
+| `sync-odds` | Every 10 minutes | Up to 8 fixtures |
+| `sync-fixtures` | Every 6 hours | Next 7 days |
+
+On the free plan this stays under the 180 requests/hour limit. Protect the
+routes with `Authorization: Bearer $CRON_SECRET`. The selected league IDs live
+in `SPORTMONKS_LEAGUE_IDS`; the `selected_league_ids` app setting is kept in
+sync for admin tooling.
+
 ## Next build
 
-1. API-Football adapter and fixture/odds/live sync jobs.
-2. Lobby and match detail with real markets.
-3. Bet slip and atomic `place_bet`.
-4. Settlement engine, cron routes, and manual admin overrides.
-5. RLS integration tests, rate limits, Sentry/PostHog, and staging beta.
+1. Bet slip and atomic `place_bet`.
+2. Settlement engine, cron routes, and manual admin overrides.
+3. Full admin matches/bets/users/settings screens.
+4. RLS integration tests, rate limits, Sentry/PostHog, and staging beta.

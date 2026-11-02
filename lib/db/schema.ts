@@ -1,15 +1,18 @@
 import { sql } from "drizzle-orm";
 import {
   bigint,
+  boolean,
   date,
   index,
   integer,
   jsonb,
+  numeric,
   pgEnum,
   pgTable,
   primaryKey,
   text,
   timestamp,
+  unique,
   uuid,
 } from "drizzle-orm/pg-core";
 
@@ -35,6 +38,43 @@ export const walletTxTypeEnum = pgEnum("wallet_tx_type", [
   "bet_refund",
   "admin_adjustment",
   "correction",
+]);
+
+export const matchStatusEnum = pgEnum("match_status", [
+  "scheduled",
+  "live",
+  "halftime",
+  "finished",
+  "postponed",
+  "cancelled",
+  "suspended",
+]);
+
+export const marketTypeEnum = pgEnum("market_type", [
+  "1X2",
+  "OU25",
+  "BTTS",
+  "DC",
+]);
+
+export const marketStatusEnum = pgEnum("market_status", [
+  "open",
+  "suspended",
+  "settled",
+  "void",
+]);
+
+export const selectionNameEnum = pgEnum("selection_name", [
+  "home",
+  "draw",
+  "away",
+  "over",
+  "under",
+  "yes",
+  "no",
+  "1X",
+  "X2",
+  "12",
 ]);
 
 export const profiles = pgTable(
@@ -200,6 +240,176 @@ export const syncRuns = pgTable(
   ],
 );
 
+export const sports = pgTable("sports", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  slug: text("slug").notNull().unique(),
+  name: text("name").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
+    .notNull()
+    .defaultNow(),
+});
+
+export const competitions = pgTable(
+  "competitions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    sportId: uuid("sport_id")
+      .notNull()
+      .references(() => sports.id, { onDelete: "restrict" }),
+    externalId: text("external_id").notNull().unique(),
+    source: text("source").notNull().default("sportmonks"),
+    name: text("name").notNull(),
+    country: text("country"),
+    logoUrl: text("logo_url"),
+    season: integer("season"),
+    priority: integer("priority").notNull().default(100),
+    active: boolean("active").notNull().default(true),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("competitions_sport_priority_idx").on(
+      table.sportId,
+      table.priority,
+      table.name,
+    ),
+  ],
+);
+
+export const teams = pgTable("teams", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  externalId: text("external_id").notNull().unique(),
+  source: text("source").notNull().default("sportmonks"),
+  name: text("name").notNull(),
+  country: text("country"),
+  logoUrl: text("logo_url"),
+  metadata: jsonb("metadata")
+    .$type<Record<string, unknown>>()
+    .notNull()
+    .default(sql`'{}'::jsonb`),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" })
+    .notNull()
+    .defaultNow(),
+});
+
+export const matches = pgTable(
+  "matches",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    externalId: text("external_id").notNull().unique(),
+    source: text("source").notNull().default("sportmonks"),
+    sportId: uuid("sport_id")
+      .notNull()
+      .references(() => sports.id, { onDelete: "restrict" }),
+    competitionId: uuid("competition_id")
+      .notNull()
+      .references(() => competitions.id, { onDelete: "restrict" }),
+    homeTeamId: uuid("home_team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "restrict" }),
+    awayTeamId: uuid("away_team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "restrict" }),
+    kickoffAt: timestamp("kickoff_at", { withTimezone: true, mode: "date" })
+      .notNull(),
+    status: matchStatusEnum("status").notNull().default("scheduled"),
+    homeScore: integer("home_score"),
+    awayScore: integer("away_score"),
+    minute: integer("minute"),
+    round: text("round"),
+    venue: text("venue"),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    lastSyncedAt: timestamp("last_synced_at", {
+      withTimezone: true,
+      mode: "date",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("matches_status_kickoff_idx").on(table.status, table.kickoffAt),
+    index("matches_kickoff_idx").on(table.kickoffAt),
+    index("matches_competition_kickoff_idx").on(
+      table.competitionId,
+      table.kickoffAt,
+    ),
+  ],
+);
+
+export const markets = pgTable(
+  "markets",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    matchId: uuid("match_id")
+      .notNull()
+      .references(() => matches.id, { onDelete: "cascade" }),
+    type: marketTypeEnum("type").notNull(),
+    status: marketStatusEnum("status").notNull().default("open"),
+    line: numeric("line", { precision: 4, scale: 2 }),
+    providerMarketId: text("provider_market_id"),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("markets_match_idx").on(table.matchId),
+    unique("markets_match_type_key").on(table.matchId, table.type),
+  ],
+);
+
+export const selections = pgTable(
+  "selections",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    marketId: uuid("market_id")
+      .notNull()
+      .references(() => markets.id, { onDelete: "cascade" }),
+    name: selectionNameEnum("name").notNull(),
+    odds: numeric("odds", { precision: 6, scale: 3 }).notNull(),
+    active: boolean("active").notNull().default(true),
+    providerSelectionId: text("provider_selection_id"),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("selections_market_idx").on(table.marketId),
+    unique("selections_market_name_key").on(table.marketId, table.name),
+  ],
+);
+
 export type Profile = typeof profiles.$inferSelect;
 export type NewProfile = typeof profiles.$inferInsert;
 export type Wallet = typeof wallets.$inferSelect;
@@ -209,3 +419,9 @@ export type AppSetting = typeof appSettings.$inferSelect;
 export type WaitlistEntry = typeof waitlist.$inferSelect;
 export type AdminAuditLog = typeof adminAuditLogs.$inferSelect;
 export type SyncRun = typeof syncRuns.$inferSelect;
+export type Sport = typeof sports.$inferSelect;
+export type Competition = typeof competitions.$inferSelect;
+export type Team = typeof teams.$inferSelect;
+export type Match = typeof matches.$inferSelect;
+export type Market = typeof markets.$inferSelect;
+export type Selection = typeof selections.$inferSelect;

@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { Suspense } from "react";
+import { io } from "next/cache";
 import {
   ArrowRight,
   CalendarDays,
@@ -10,6 +12,8 @@ import {
   Trophy,
 } from "lucide-react";
 
+import { MatchCard } from "@/components/matches/match-card";
+import { LiveMatches } from "@/components/matches/live-matches";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import {
@@ -19,6 +23,9 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { getFeaturedMatch, getLiveMatches, getUpcomingMatches } from "@/lib/catalog/queries";
+import type { CatalogMatch } from "@/lib/catalog/types";
+import { formatKickoff, formatMatchDay } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 const markets = [
@@ -138,74 +145,32 @@ export default function HomePage() {
             </div>
           </div>
 
-          <Card className="relative overflow-hidden border-brand/20 bg-card/90 shadow-2xl shadow-black/30">
-            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-brand/70 to-transparent" />
-            <CardHeader className="gap-1">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="eyebrow">Matchday preview</p>
-                  <CardTitle className="mt-1 text-xl">Your bet slip</CardTitle>
-                </div>
-                <Badge variant="outline" className="border-brand/30 text-brand">
-                  Preview
-                </Badge>
-              </div>
-              <CardDescription>
-                The fixture and odds feed connects in the next build.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="rounded-xl border border-border/80 bg-background/50 p-4">
-                <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span>Premier League</span>
-                  <span>Sat · 17:30</span>
-                </div>
-                <div className="mt-3 flex items-center justify-between gap-3">
-                  <div>
-                    <p className="font-medium">Home team</p>
-                    <p className="text-xs text-muted-foreground">vs Away team</p>
-                  </div>
-                  <div className="grid grid-cols-3 gap-1.5">
-                    {["1.85", "3.40", "4.10"].map((odd) => (
-                      <span
-                        key={odd}
-                        className="rounded-md border border-border bg-card px-2 py-1 text-xs font-semibold tabular-nums text-muted-foreground"
-                      >
-                        {odd}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                {markets.map((market) => (
-                  <div
-                    key={market.label}
-                    className="rounded-lg border border-border/70 bg-background/40 p-3"
-                  >
-                    <p className="text-sm font-semibold text-foreground">
-                      {market.label}
-                    </p>
-                    <p className="text-[0.7rem] text-muted-foreground">
-                      {market.detail}
-                    </p>
-                  </div>
-                ))}
-              </div>
-
-              <div className="flex items-center justify-between rounded-xl border border-brand/20 bg-brand/5 p-4">
-                <div>
-                  <p className="text-xs text-muted-foreground">Potential payout</p>
-                  <p className="text-xl font-semibold tabular-nums text-brand">
-                    12,450 BET
-                  </p>
-                </div>
-                <Coins className="size-6 text-brand" />
-              </div>
-            </CardContent>
-          </Card>
+          <Suspense fallback={<PreviewCard />}>
+            <FeaturedMatchCard />
+          </Suspense>
         </div>
+      </section>
+
+      <section className="page-shell py-10">
+        <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="eyebrow">Match centre</p>
+            <h2 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">
+              Live and upcoming
+            </h2>
+          </div>
+          <Link
+            href="/live"
+            className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-9")}
+          >
+            Live centre
+            <ArrowRight className="size-3.5" />
+          </Link>
+        </div>
+
+        <Suspense fallback={<MatchCentreSkeleton />}>
+          <MatchCentre />
+        </Suspense>
       </section>
 
       <section className="page-shell py-14">
@@ -297,4 +262,189 @@ export default function HomePage() {
       </section>
     </>
   );
+}
+
+async function FeaturedMatchCard() {
+  await io();
+  const match = await getFeaturedMatch();
+
+  if (!match) {
+    return <PreviewCard />;
+  }
+
+  const isLive = match.status === "live" || match.status === "halftime";
+
+  return (
+    <Card className="relative overflow-hidden border-brand/20 bg-card/90 shadow-2xl shadow-black/30">
+      <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-brand/70 to-transparent" />
+      <CardHeader className="gap-1">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="eyebrow">{isLive ? "Live now" : "Next up"}</p>
+            <CardTitle className="mt-1 text-xl">{match.competition.name}</CardTitle>
+          </div>
+          <Badge variant="outline" className="border-brand/30 text-brand">
+            {match.isDemo ? "Demo" : "Featured"}
+          </Badge>
+        </div>
+        <CardDescription>
+          {match.status === "scheduled"
+            ? `Kickoff ${formatKickoff(match.kickoffAt)}`
+            : "Follow the live score and pre-match markets."}
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <MatchCard match={match} className="border-0 bg-transparent p-0" />
+        <Link
+          href={`/match/${match.id}`}
+          className={cn(buttonVariants(), "mt-4 h-11 w-full gap-2")}
+        >
+          View markets
+          <ArrowRight className="size-4" />
+        </Link>
+      </CardContent>
+    </Card>
+  );
+}
+
+function PreviewCard() {
+  return (
+    <Card className="relative overflow-hidden border-brand/20 bg-card/90 shadow-2xl shadow-black/30">
+      <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-brand/70 to-transparent" />
+      <CardHeader className="gap-1">
+        <p className="eyebrow">Matchday</p>
+        <CardTitle className="text-xl">Fixtures are syncing</CardTitle>
+        <CardDescription>
+          Live scores and odds will appear here as soon as the feed is
+          connected. The match centre updates every minute.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="grid grid-cols-2 gap-2">
+        {markets.map((market) => (
+          <div
+            key={market.label}
+            className="rounded-lg border border-border/70 bg-background/40 p-3"
+          >
+            <p className="text-sm font-semibold text-foreground">
+              {market.label}
+            </p>
+            <p className="text-[0.7rem] text-muted-foreground">{market.detail}</p>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
+async function MatchCentre() {
+  await io();
+  const [live, upcoming] = await Promise.all([
+    getLiveMatches(),
+    getUpcomingMatches(18),
+  ]);
+
+  if (live.length === 0 && upcoming.length === 0) {
+    return <EmptyFixtures />;
+  }
+
+  const groups = groupByMatchDay(upcoming);
+
+  return (
+    <div className="space-y-8">
+      <div>
+        <div className="mb-3 flex items-center gap-2">
+          <span
+            className={cn(
+              "size-2 rounded-full",
+              live.length > 0
+                ? "animate-pulse bg-live"
+                : "bg-muted-foreground/40",
+            )}
+          />
+          <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            Live now
+          </h3>
+        </div>
+        {live.length > 0 ? (
+          <LiveMatches initialMatches={live} />
+        ) : (
+          <p className="rounded-xl border border-dashed border-border/70 bg-card/30 px-4 py-3 text-sm text-muted-foreground">
+            No matches are live right now. The next kickoff is listed below.
+          </p>
+        )}
+      </div>
+
+      {groups.length > 0 ? (
+        <div>
+          <h3 className="mb-3 text-sm font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            Upcoming
+          </h3>
+          <div className="space-y-5">
+            {groups.map(([day, matches]) => (
+              <div key={day}>
+                <p className="mb-2 text-xs font-medium text-muted-foreground">
+                  {day}
+                </p>
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {matches.map((match) => (
+                    <MatchCard key={match.id} match={match} />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function EmptyFixtures() {
+  return (
+    <div className="rounded-2xl border border-dashed border-border/80 bg-card/40 p-8 text-center">
+      <span className="mx-auto grid size-12 place-items-center rounded-2xl border border-brand/20 bg-brand/10 text-brand">
+        <CalendarDays className="size-6" />
+      </span>
+      <h3 className="mt-4 text-lg font-semibold">Fixtures are being prepared</h3>
+      <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">
+        The next set of matches will appear here as soon as the feed syncs.
+        Check the live centre for scores and status updates.
+      </p>
+      <Link
+        href="/live"
+        className={cn(buttonVariants({ variant: "outline" }), "mt-5 h-10")}
+      >
+        Open live centre
+      </Link>
+    </div>
+  );
+}
+
+function MatchCentreSkeleton() {
+  return (
+    <div className="space-y-4">
+      <div className="h-3 w-24 animate-pulse rounded bg-muted" />
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {Array.from({ length: 6 }).map((_, index) => (
+          <div
+            key={index}
+            className="h-40 animate-pulse rounded-xl border border-border/70 bg-card/50"
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function groupByMatchDay(matches: CatalogMatch[]): Array<[string, CatalogMatch[]]> {
+  const groups = new Map<string, CatalogMatch[]>();
+
+  for (const match of matches) {
+    const day = formatMatchDay(match.kickoffAt);
+    const existing = groups.get(day) ?? [];
+    existing.push(match);
+    groups.set(day, existing);
+  }
+
+  return [...groups.entries()];
 }
