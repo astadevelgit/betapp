@@ -26,7 +26,7 @@ const MATCH_SELECT = `
   competition:competitions!matches_competition_id_fkey(name, country, logo_url),
   home_team:teams!matches_home_team_id_fkey(name, logo_url),
   away_team:teams!matches_away_team_id_fkey(name, logo_url),
-  markets(type, status, line, updated_at, selections(name, odds, active))
+  markets(id, type, status, line, updated_at, selections(id, name, odds, active))
 `;
 
 const MARKET_ORDER: Record<CatalogMarketType, number> = {
@@ -66,11 +66,13 @@ interface MatchRow {
   home_team: { name: string; logo_url: string | null } | null;
   away_team: { name: string; logo_url: string | null } | null;
   markets: Array<{
+    id: string;
     type: CatalogMarketType;
     status: CatalogMarketStatus;
     line: number | string | null;
     updated_at: string;
     selections: Array<{
+      id: string;
       name: CatalogSelectionName;
       odds: number | string;
       active: boolean;
@@ -241,6 +243,7 @@ function mapMatch(row: MatchRow): CatalogMatch {
 
 function mapMarket(row: NonNullable<MatchRow["markets"]>[number]): CatalogMarket {
   return {
+    id: row.id,
     type: row.type,
     status: row.status,
     line: row.line === null ? null : Number(row.line),
@@ -255,6 +258,7 @@ function mapSelection(
   row: NonNullable<NonNullable<MatchRow["markets"]>[number]["selections"]>[number],
 ): CatalogSelection {
   return {
+    id: row.id,
     name: row.name,
     odds: Number(row.odds),
     active: row.active,

@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   bigint,
   boolean,
+  check,
   date,
   index,
   integer,
@@ -75,6 +76,22 @@ export const selectionNameEnum = pgEnum("selection_name", [
   "1X",
   "X2",
   "12",
+]);
+
+export const betTypeEnum = pgEnum("bet_type", ["single", "accumulator"]);
+
+export const betStatusEnum = pgEnum("bet_status", [
+  "open",
+  "won",
+  "lost",
+  "void",
+]);
+
+export const legResultEnum = pgEnum("leg_result", [
+  "pending",
+  "won",
+  "lost",
+  "void",
 ]);
 
 export const profiles = pgTable(
@@ -410,6 +427,98 @@ export const selections = pgTable(
   ],
 );
 
+export const bets = pgTable(
+  "bets",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "restrict" }),
+    type: betTypeEnum("type").notNull(),
+    stake: bigint("stake", { mode: "number" }).notNull(),
+    totalOdds: numeric("total_odds").notNull(),
+    potentialPayout: bigint("potential_payout", { mode: "number" }).notNull(),
+    payout: bigint("payout", { mode: "number" }).notNull().default(0),
+    status: betStatusEnum("status").notNull().default("open"),
+    idempotencyKey: text("idempotency_key").notNull().unique(),
+    placedAt: timestamp("placed_at", { withTimezone: true, mode: "date" })
+      .notNull()
+      .defaultNow(),
+    settledAt: timestamp("settled_at", { withTimezone: true, mode: "date" }),
+    settledBy: uuid("settled_by").references(() => profiles.id, {
+      onDelete: "set null",
+    }),
+    settlementReason: text("settlement_reason"),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+  },
+  (table) => [
+    index("bets_user_placed_idx").on(table.userId, table.placedAt.desc()),
+    index("bets_user_status_placed_idx").on(
+      table.userId,
+      table.status,
+      table.placedAt.desc(),
+    ),
+    index("bets_status_placed_idx").on(table.status, table.placedAt.desc()),
+    check("bets_stake_range", sql`${table.stake} between 100 and 50000`),
+    check("bets_total_odds_positive", sql`${table.totalOdds} > 1`),
+    check(
+      "bets_potential_payout_range",
+      sql`${table.potentialPayout} > 0 and ${table.potentialPayout} <= 1000000`,
+    ),
+    check("bets_payout_non_negative", sql`${table.payout} >= 0`),
+    check(
+      "bets_settlement_consistent",
+      sql`(${table.status} = 'open' and ${table.settledAt} is null) or (${table.status} <> 'open' and ${table.settledAt} is not null)`,
+    ),
+  ],
+);
+
+export const betLegs = pgTable(
+  "bet_legs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    betId: uuid("bet_id")
+      .notNull()
+      .references(() => bets.id, { onDelete: "cascade" }),
+    matchId: uuid("match_id")
+      .notNull()
+      .references(() => matches.id, { onDelete: "restrict" }),
+    marketId: uuid("market_id")
+      .notNull()
+      .references(() => markets.id, { onDelete: "restrict" }),
+    selectionId: uuid("selection_id")
+      .notNull()
+      .references(() => selections.id, { onDelete: "restrict" }),
+    oddsAtPlacement: numeric("odds_at_placement", {
+      precision: 6,
+      scale: 3,
+    }).notNull(),
+    result: legResultEnum("result").notNull().default("pending"),
+    settledAt: timestamp("settled_at", { withTimezone: true, mode: "date" }),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("bet_legs_bet_idx").on(table.betId),
+    index("bet_legs_match_result_idx").on(table.matchId, table.result),
+    index("bet_legs_selection_idx").on(table.selectionId),
+    unique("bet_legs_one_per_match").on(table.betId, table.matchId),
+    unique("bet_legs_one_per_market").on(table.betId, table.marketId),
+    check(
+      "bet_legs_odds_range",
+      sql`${table.oddsAtPlacement} > 1.000 and ${table.oddsAtPlacement} < 1000.000`,
+    ),
+    check(
+      "bet_legs_settlement_consistent",
+      sql`(${table.result} = 'pending' and ${table.settledAt} is null) or (${table.result} <> 'pending' and ${table.settledAt} is not null)`,
+    ),
+  ],
+);
+
 export type Profile = typeof profiles.$inferSelect;
 export type NewProfile = typeof profiles.$inferInsert;
 export type Wallet = typeof wallets.$inferSelect;
@@ -425,3 +534,7 @@ export type Team = typeof teams.$inferSelect;
 export type Match = typeof matches.$inferSelect;
 export type Market = typeof markets.$inferSelect;
 export type Selection = typeof selections.$inferSelect;
+export type Bet = typeof bets.$inferSelect;
+export type NewBet = typeof bets.$inferInsert;
+export type BetLeg = typeof betLegs.$inferSelect;
+export type NewBetLeg = typeof betLegs.$inferInsert;

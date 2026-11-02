@@ -1,10 +1,9 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { ArrowRight, Ticket } from "lucide-react";
+import { connection } from "next/server";
 
-import { buttonVariants } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
+import { MyBetsTabs } from "@/components/bets/my-bets-tabs";
+import { requireUser } from "@/lib/auth/session";
+import { getMyBets } from "@/lib/bets/queries";
 
 export const metadata: Metadata = {
   title: "My bets",
@@ -12,36 +11,26 @@ export const metadata: Metadata = {
 
 export const instant = false;
 
-export default function MyBetsPage() {
+export default async function MyBetsPage() {
+  await connection();
+  const { user } = await requireUser();
+  const bets = await getMyBets(user.id);
+
+  const open = bets.filter((bet) => bet.status === "open");
+  const settled = bets.filter((bet) => bet.status !== "open");
+
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <div>
         <p className="eyebrow">Your record</p>
         <h1 className="mt-1 text-3xl font-semibold tracking-tight">My bets</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Singles and accumulators, open and settled.
+          Singles and accumulators, open and settled. Payouts are credited after
+          the 90-minute result is confirmed.
         </p>
       </div>
 
-      <Card className="border-border/80 bg-card/70">
-        <CardContent className="flex flex-col items-center px-6 py-14 text-center">
-          <span className="grid size-14 place-items-center rounded-2xl border border-brand/20 bg-brand/10 text-brand">
-            <Ticket className="size-6" />
-          </span>
-          <h2 className="mt-5 text-xl font-semibold">No bets yet</h2>
-          <p className="mt-2 max-w-sm text-sm leading-6 text-muted-foreground">
-            Add a selection from a match, choose your stake, and your slip will
-            appear here with its live status.
-          </p>
-          <Link
-            href="/"
-            className={cn(buttonVariants(), "mt-6 h-11")}
-          >
-            Browse football
-            <ArrowRight className="size-4" />
-          </Link>
-        </CardContent>
-      </Card>
+      <MyBetsTabs open={open} settled={settled} />
     </div>
   );
 }

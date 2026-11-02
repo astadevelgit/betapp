@@ -24,12 +24,14 @@ export type CatalogSelectionName =
   | "12";
 
 export interface CatalogSelection {
+  id: string;
   name: CatalogSelectionName;
   odds: number;
   active: boolean;
 }
 
 export interface CatalogMarket {
+  id: string;
   type: CatalogMarketType;
   status: CatalogMarketStatus;
   line: number | null;

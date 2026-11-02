@@ -4,9 +4,9 @@ A closed-loop, play-money football sportsbook for a Nigeria-focused private
 beta. BET coins have no cash value. There are no purchases, cash-outs, prizes,
 or real-money wagers.
 
-**Status:** Foundation, catalog, Sportmonks provider sync, lobby, and match
-detail are in place. The betting engine, settlement, and full admin operations
-are next.
+**Status:** Foundation, catalog, Sportmonks provider sync, lobby, match detail,
+and the Week 3 betting engine are in place. Settlement and full admin
+operations are next.
 
 ## Stack
 
@@ -43,6 +43,11 @@ The full product and delivery plan is in
   scheduling.
 - Public lobby, live centre, and match detail with markets and 60-second live
   score polling.
+- Persisted bet slip with Singles/Accumulator tabs, stake and payout preview,
+  login prompt, and an odds-change review dialog.
+- Atomic `place_bet` RPC with idempotency, odds snapshots, wallet locking,
+  duplicate-match rejection, stake limits, and a capped payout.
+- My Bets with open/settled tabs, leg results, and payout summaries.
 - Demo catalog seeder for local UI work.
 - Admin dashboard shell plus placeholders for matches, bets, users,
   transactions, settings, and audit.
@@ -96,15 +101,28 @@ the Management API instead (this is the path this project used):
 
 ```bash
 npx supabase db query --linked --project-ref <your-project-ref> \
-  --file supabase/migrations/20261101000001_foundation.sql
+  --file supabase/migrations/20261101000001_foundation.sql --yes
 npx supabase db query --linked --project-ref <your-project-ref> \
-  --file supabase/seed.sql
+  --file supabase/migrations/20261102000001_catalog.sql --yes
+npx supabase db query --linked --project-ref <your-project-ref> \
+  --file supabase/migrations/20261102000002_sportmonks.sql --yes
+npx supabase db query --linked --project-ref <your-project-ref> \
+  --file supabase/migrations/20261102000003_betting.sql --yes
+npx supabase db query --linked --project-ref <your-project-ref> \
+  --file supabase/seed.sql --yes
 ```
 
 Or paste these files into the Supabase SQL editor, in order:
 
 1. `supabase/migrations/20261101000001_foundation.sql`
-2. `supabase/seed.sql`
+2. `supabase/migrations/20261102000001_catalog.sql`
+3. `supabase/migrations/20261102000002_sportmonks.sql`
+4. `supabase/migrations/20261102000003_betting.sql`
+5. `supabase/seed.sql`
+
+The hosted CLI asks for explicit confirmation before write statements; pass
+`--yes` only after reviewing the file. Read-only checks can use `--read-only`
+without confirmation.
 
 The migration creates triggers on `auth.users`, so it must run with the
 Supabase migration role (the CLI or SQL editor does this).
@@ -210,9 +228,52 @@ routes with `Authorization: Bearer $CRON_SECRET`. The selected league IDs live
 in `SPORTMONKS_LEAGUE_IDS`; the `selected_league_ids` app setting is kept in
 sync for admin tooling.
 
+## Betting flow
+
+1. Pick any open selection on a scheduled match. The slip stores a snapshot of
+   the teams, competition, kickoff, market, and odds in `localStorage`.
+2. Add another selection from a different match to build an accumulator. A
+   second selection from the same match replaces the first, so accumulator legs
+   are always from distinct matches.
+3. Choose **Singles** (exactly one selection) or **Accumulator** (2–10 legs),
+   enter a whole-coin stake, and review the previewed total odds and payout.
+4. `placeBetAction` authenticates the session, validates the payload with Zod,
+   and calls `place_bet` through the server-only service role. The browser never
+   supplies a user ID.
+5. `place_bet` locks the wallet and the catalog rows, re-checks every selection,
+   and compares the expected odds with the current odds. If anything moved it
+   returns `ODDS_CHANGED` with the current prices and does not debit the wallet.
+6. On success the stake is debited once, a `bet_stake` ledger row is written,
+   and the slip clears. Retrying the same submission key returns the original
+   bet without a second debit.
+
+Limits: minimum stake **100**, maximum stake **50,000**, maximum payout
+**1,000,000** BET per bet. Odds are snapshotted on each leg; settlement will use
+the snapshot, not the live price.
+
+### Testing bets without polluting the ledger
+
+Use a transaction and roll it back for RPC checks:
+
+```sql
+begin;
+select public.place_bet(
+  '<user-uuid>',
+  'local-test-1',
+  'single',
+  100,
+  '[{"matchId":"...","marketId":"...","selectionId":"...","expectedOdds":6.000}]'::jsonb
+);
+rollback;
+```
+
+For a UI smoke test, place a small bet as the seeded admin, verify My Bets and
+Wallet, then delete the bet's `wallet_transactions` row, delete the bet, and
+credit the stake back. The current admin wallet is **12,000** with no bets after
+cleanup.
+
 ## Next build
 
-1. Bet slip and atomic `place_bet`.
-2. Settlement engine, cron routes, and manual admin overrides.
-3. Full admin matches/bets/users/settings screens.
-4. RLS integration tests, rate limits, Sentry/PostHog, and staging beta.
+1. Settlement engine, cron routes, and manual admin overrides.
+2. Full admin matches/bets/users/settings screens.
+3. RLS integration tests, rate limits, Sentry/PostHog, and staging beta.

@@ -1,38 +1,72 @@
 "use client";
 
+import { Check } from "lucide-react";
 import { toast } from "sonner";
 
 import { formatOdds } from "@/lib/format";
+import { useBetSlipStore } from "@/lib/bets/store";
+import type { BetSlipLeg } from "@/lib/bets/types";
+import { useHydrated } from "@/lib/use-hydrated";
 import { cn } from "@/lib/utils";
 
 export function SelectionButton({
+  leg,
   label,
   hint,
-  odds,
   disabled,
   reason,
 }: {
+  leg: BetSlipLeg;
   label: string;
   hint: string;
-  odds: number;
   disabled: boolean;
   reason: string;
 }) {
+  const hydrated = useHydrated();
+  const selectedInStore = useBetSlipStore((state) =>
+    state.legs.some((item) => item.selectionId === leg.selectionId),
+  );
+  const selected = hydrated && selectedInStore;
+  const addLeg = useBetSlipStore((state) => state.addLeg);
+
   return (
     <button
       type="button"
       disabled={disabled}
-      title={disabled ? reason : `Add ${label} to your bet slip`}
+      aria-pressed={selected}
+      title={
+        disabled
+          ? reason
+          : selected
+            ? `Remove ${label} from your bet slip`
+            : `Add ${label} to your bet slip`
+      }
       onClick={() => {
-        toast.info("Bet slip opens in the next build.", {
-          description: "Markets are ready. Betting and wallet debits come next.",
-        });
+        const result = addLeg(leg);
+
+        if (result === "added") {
+          toast.success(`${label} added`, {
+            description: `${leg.homeTeam} vs ${leg.awayTeam}`,
+          });
+        } else if (result === "removed") {
+          toast("Removed from bet slip");
+        } else if (result === "replaced") {
+          toast.info("Selection replaced", {
+            description: "An accumulator can only use one selection per match.",
+          });
+        } else {
+          toast.error("Bet slip is full", {
+            description: "You can combine up to 10 selections.",
+          });
+        }
       }}
       className={cn(
-        "group flex w-full items-center justify-between gap-2 rounded-lg border border-border/80 bg-background/50 px-3 py-2.5 text-left transition-colors",
+        "group flex w-full items-center justify-between gap-2 rounded-lg border bg-background/50 px-3 py-2.5 text-left transition-colors",
         disabled
-          ? "cursor-not-allowed opacity-50"
-          : "hover:border-brand/50 hover:bg-brand/5",
+          ? "cursor-not-allowed border-border/80 opacity-50"
+          : selected
+            ? "border-brand/60 bg-brand/10"
+            : "border-border/80 hover:border-brand/50 hover:bg-brand/5",
       )}
     >
       <span className="min-w-0">
@@ -41,8 +75,16 @@ export function SelectionButton({
           {hint}
         </span>
       </span>
-      <span className="shrink-0 rounded-md border border-brand/20 bg-brand/10 px-2 py-1 text-sm font-semibold tabular-nums text-brand">
-        {formatOdds(odds)}
+      <span
+        className={cn(
+          "flex shrink-0 items-center gap-1 rounded-md border px-2 py-1 text-sm font-semibold tabular-nums",
+          selected
+            ? "border-brand/40 bg-brand/15 text-brand"
+            : "border-brand/20 bg-brand/10 text-brand",
+        )}
+      >
+        {selected ? <Check className="size-3" strokeWidth={3} /> : null}
+        {formatOdds(leg.odds)}
       </span>
     </button>
   );

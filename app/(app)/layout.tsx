@@ -1,10 +1,12 @@
 import { Suspense } from "react";
 import { connection } from "next/server";
 
+import { BetSlip } from "@/components/bets/bet-slip";
 import { BottomNav } from "@/components/layout/bottom-nav";
 import { SiteFooter } from "@/components/layout/site-footer";
 import { SiteHeader } from "@/components/layout/site-header";
 import { requireUser } from "@/lib/auth/session";
+import { getWallet } from "@/lib/wallet/queries";
 
 export const instant = false;
 
@@ -15,6 +17,7 @@ async function AuthenticatedShell({
 }) {
   await connection();
   const context = await requireUser();
+  const wallet = await getWallet(context.user.id);
 
   return (
     <>
@@ -24,6 +27,10 @@ async function AuthenticatedShell({
       </main>
       <SiteFooter />
       <BottomNav />
+      <BetSlip
+        authenticated
+        balance={wallet?.balance ?? 0}
+      />
     </>
   );
 }

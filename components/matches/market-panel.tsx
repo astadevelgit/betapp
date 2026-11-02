@@ -6,6 +6,7 @@ import {
   selectionLabel,
 } from "@/lib/catalog/labels";
 import type { CatalogMarket, CatalogMatch } from "@/lib/catalog/types";
+import type { BetSlipLeg } from "@/lib/bets/types";
 import { cn } from "@/lib/utils";
 
 import { SelectionButton } from "./selection-button";
@@ -24,7 +25,7 @@ export function MarketPanel({
     ? "Markets close at kickoff."
     : !isOpen
       ? "This market is suspended."
-      : "Betting opens in the next build.";
+      : "This selection is unavailable.";
 
   return (
     <section className="rounded-xl border border-border/70 bg-card/60 p-4">
@@ -48,23 +49,39 @@ export function MarketPanel({
           market.selections.length > 2 ? "grid-cols-3" : "grid-cols-2",
         )}
       >
-        {market.selections.map((selection) => (
-          <SelectionButton
-            key={selection.name}
-            label={selectionLabel(market.type, selection.name)}
-            hint={selectionHint(
-              market.type,
-              selection.name,
-              match.homeTeam.name,
-              match.awayTeam.name,
-            )}
-            odds={selection.odds}
-            disabled={disabled || !selection.active}
-            reason={
-              selection.active ? reason : "This selection is unavailable."
-            }
-          />
-        ))}
+        {market.selections.map((selection) => {
+          const label = selectionLabel(market.type, selection.name);
+          const leg: BetSlipLeg = {
+            matchId: match.id,
+            marketId: market.id,
+            selectionId: selection.id,
+            odds: selection.odds,
+            marketType: market.type,
+            selectionName: selection.name,
+            homeTeam: match.homeTeam.name,
+            awayTeam: match.awayTeam.name,
+            competition: match.competition.name,
+            kickoffAt: match.kickoffAt,
+          };
+
+          return (
+            <SelectionButton
+              key={selection.id}
+              leg={leg}
+              label={label}
+              hint={selectionHint(
+                market.type,
+                selection.name,
+                match.homeTeam.name,
+                match.awayTeam.name,
+              )}
+              disabled={disabled || !selection.active}
+              reason={
+                selection.active ? reason : "This selection is unavailable."
+              }
+            />
+          );
+        })}
       </div>
     </section>
   );
