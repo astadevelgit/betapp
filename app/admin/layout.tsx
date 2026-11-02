@@ -1,3 +1,5 @@
+import { Suspense } from "react";
+import { connection } from "next/server";
 import Link from "next/link";
 import { ArrowLeft, LogOut } from "lucide-react";
 
@@ -9,11 +11,12 @@ import { requireAdmin } from "@/lib/auth/session";
 
 export const instant = false;
 
-export default async function AdminLayout({
+async function AdminShell({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  await connection();
   const context = await requireAdmin();
 
   return (
@@ -84,5 +87,28 @@ export default async function AdminLayout({
         </div>
       </div>
     </div>
+  );
+}
+
+function AdminFallback() {
+  return (
+    <div className="flex min-h-dvh items-center justify-center">
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <span className="size-2 animate-pulse rounded-full bg-brand" />
+        Loading admin console…
+      </div>
+    </div>
+  );
+}
+
+export default function AdminLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <Suspense fallback={<AdminFallback />}>
+      <AdminShell>{children}</AdminShell>
+    </Suspense>
   );
 }

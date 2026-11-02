@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { connection } from "next/server";
 import {
   ArrowDownLeft,
   ArrowUpRight,
@@ -42,6 +43,7 @@ const transactionLabels: Record<string, string> = {
 };
 
 export default async function WalletPage() {
+  await connection();
   const { user } = await requireUser();
   const [wallet, transactions, claimedToday] = await Promise.all([
     getWallet(user.id),

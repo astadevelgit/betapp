@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { connection } from "next/server";
 import Link from "next/link";
 import {
   Activity,
@@ -41,6 +42,7 @@ type SyncRun = {
 };
 
 export default async function AdminDashboardPage() {
+  await connection();
   await requireAdmin();
 
   let players = 0;

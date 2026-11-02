@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { connection } from "next/server";
 import { CalendarDays, Globe2, LogOut, Mail, UserRound } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -20,6 +21,7 @@ export const metadata: Metadata = {
 export const instant = false;
 
 export default async function AccountPage() {
+  await connection();
   const { profile } = await requireUser();
 
   const rows = [

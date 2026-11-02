@@ -4,8 +4,9 @@ A closed-loop, play-money football sportsbook for a Nigeria-focused private
 beta. BET coins have no cash value. There are no purchases, cash-outs, prizes,
 or real-money wagers.
 
-**Status:** Week 0 foundation complete. The fixture/odds feed, betting engine,
-settlement, and full admin operations are next.
+**Status:** Week 0 foundation complete and verified against a live Supabase
+project. The fixture/odds feed, betting engine, settlement, and full admin
+operations are next.
 
 ## Stack
 
@@ -40,6 +41,9 @@ The full product and delivery plan is in
   transactions, settings, and audit.
 - `noindex` metadata, `X-Robots-Tag`, and baseline security headers.
 - One-time admin bootstrap script.
+- Verified end-to-end against Supabase: admin login, protected-route redirects,
+  wallet balance and ledger, idempotent daily claim, and the confirmed-email
+  signup bonus (10,000 BET).
 
 ## Prerequisites
 
@@ -75,6 +79,16 @@ With the Supabase CLI:
 ```bash
 npx supabase link --project-ref <your-project-ref>
 npx supabase db push
+```
+
+`db push` needs the database password. If you do not have it, apply SQL through
+the Management API instead (this is the path this project used):
+
+```bash
+npx supabase db query --linked --project-ref <your-project-ref> \
+  --file supabase/migrations/20261101000001_foundation.sql
+npx supabase db query --linked --project-ref <your-project-ref> \
+  --file supabase/seed.sql
 ```
 
 Or paste these files into the Supabase SQL editor, in order:
@@ -159,13 +173,13 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ## Current blockers
 
-- Supabase URL/keys are not configured in this workspace, so auth and wallet
-  runtime flows cannot be tested yet.
 - Docker/psql are not installed; use a remote Supabase project for now.
 - API-Football plan coverage must be verified before the fixture adapter is
   built.
 - Legal pages are beta placeholders and need Nigerian counsel review before a
   public launch.
+- **Patch Next.js 16.4.3 on Nov 3, 2026.** A security release is scheduled for
+  that date; upgrade and redeploy as soon as it ships.
 
 ## Next build
 
