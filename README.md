@@ -5,8 +5,8 @@ beta. BET coins have no cash value. There are no purchases, cash-outs, prizes,
 or real-money wagers.
 
 **Status:** Foundation, catalog, Sportmonks provider sync, lobby, match detail,
-the Week 3 betting engine, and Week 4 settlement are in place. The remaining
-admin screens are next.
+the betting engine, settlement, and the full admin console are in place. Next is
+security hardening: RLS integration tests, rate limits, and observability.
 
 ## Stack
 
@@ -50,10 +50,10 @@ The full product and delivery plan is in
 - My Bets with open/settled tabs, leg results, and payout summaries.
 - Automatic settlement cron for 1X2, O/U 2.5, BTTS, and Double Chance, with
   void-leg recalculation and full void/refund handling.
-- Admin Bets screen with audited settle/void actions and an audit log.
+- Admin console: dashboard, bet settlement queue, matches and sync status,
+  users with audited balance adjustments and suspensions, ledger transactions,
+  settings, and the audit log.
 - Demo catalog seeder for local UI work.
-- Admin dashboard, bet settlement queue, and audit log; placeholders remain for
-  matches, users, transactions, and settings.
 - `noindex` metadata, `X-Robots-Tag`, and baseline security headers.
 - One-time admin bootstrap script.
 - Verified end-to-end against Supabase: admin login, protected-route redirects,
@@ -114,6 +114,8 @@ npx supabase db query --linked --project-ref <your-project-ref> \
 npx supabase db query --linked --project-ref <your-project-ref> \
   --file supabase/migrations/20261102000004_settlement.sql --yes
 npx supabase db query --linked --project-ref <your-project-ref> \
+  --file supabase/migrations/20261102000005_admin.sql --yes
+npx supabase db query --linked --project-ref <your-project-ref> \
   --file supabase/seed.sql --yes
 ```
 
@@ -124,7 +126,8 @@ Or paste these files into the Supabase SQL editor, in order:
 3. `supabase/migrations/20261102000002_sportmonks.sql`
 4. `supabase/migrations/20261102000003_betting.sql`
 5. `supabase/migrations/20261102000004_settlement.sql`
-6. `supabase/seed.sql`
+6. `supabase/migrations/20261102000005_admin.sql`
+7. `supabase/seed.sql`
 
 The hosted CLI asks for explicit confirmation before write statements; pass
 `--yes` only after reviewing the file. Read-only checks can use `--read-only`
@@ -287,6 +290,34 @@ The action requires a reason and writes `admin_audit_logs` with before/after
 snapshots. Corrections after settlement are handled by a separate audited
 balance adjustment, never by silently editing the bet.
 
+### Admin console
+
+The console is designed to operate the beta without SQL:
+
+- **Dashboard:** players, open bets, open liability, coins issued, sync status,
+  and settlement failures.
+- **Matches:** fixture coverage, live scores, market depth, latest run for each
+  provider job, and manual fixture/live/odds sync buttons.
+- **Bets:** open and settled bets with audited settle/void dialogs.
+- **Users:** search and status filters, wallet balances, audited balance
+  adjustments, and suspend/restore.
+- **Transactions:** the read-only coin ledger with type, player, and date
+  filters.
+- **Settings:** the economy grants, stake and payout limits, odds staleness,
+  beta cap/toggle, and maintenance mode.
+- **Audit log:** every admin mutation with before/after values and the reason.
+
+`admin_adjust_balance` is idempotent, rejects zero and over-limit adjustments,
+and cannot take a wallet below zero. `admin_set_user_status` blocks changes to
+the admin's own account. `admin_update_settings` only accepts the nine editable
+keys and validates ranges before writing. All three functions are
+`SECURITY DEFINER` and executable only by `service_role`; the server actions
+authenticate the admin first.
+
+`maintenance_mode` pauses new bet placements in `placeBetAction` while existing
+bets continue to settle. `beta_enabled = false` sends new signups to the
+waitlist without changing the beta cap.
+
 ### Testing bets without polluting the ledger
 
 Use a transaction and roll it back for RPC checks:
@@ -310,6 +341,6 @@ cleanup.
 
 ## Next build
 
-1. Full admin matches/users/settings/transactions screens.
-2. RLS integration tests, rate limits, Sentry/PostHog, and staging beta.
+1. RLS integration tests, rate limits, and security headers review.
+2. Sentry/PostHog, error boundaries, and staging beta.
 3. Nigerian legal review and the Next.js security patch.

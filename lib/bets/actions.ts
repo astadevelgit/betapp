@@ -123,6 +123,27 @@ export async function placeBetAction(
 
   try {
     const admin = getSupabaseAdminClient();
+    const { data: maintenanceSetting, error: maintenanceError } = await admin
+      .from("app_settings")
+      .select("value")
+      .eq("key", "maintenance_mode")
+      .maybeSingle();
+
+    if (maintenanceError) {
+      console.error(
+        "[bets] Could not read maintenance mode",
+        maintenanceError.message,
+      );
+    }
+
+    if (!maintenanceError && maintenanceSetting?.value === true) {
+      return {
+        ok: false,
+        code: "MAINTENANCE",
+        message: "Betting is paused for maintenance. Please try again shortly.",
+      };
+    }
+
     const { data, error } = await admin.rpc("place_bet", {
       p_user_id: context.user.id,
       p_idempotency_key: payload.idempotencyKey,
