@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import { connection } from "next/server";
 import Link from "next/link";
 import {
-  Activity,
   ArrowRight,
   CircleDollarSign,
+  Coins,
   Database,
   RefreshCw,
   Ticket,
@@ -48,32 +48,44 @@ export default async function AdminDashboardPage() {
   let players = 0;
   let waitlisted = 0;
   let coinsInCirculation = 0;
+  let openBets = 0;
+  let openLiability = 0;
   let syncRuns: SyncRun[] = [];
   let dataError: string | null = null;
 
   if (isSupabaseAdminConfigured()) {
     const admin = getSupabaseAdminClient();
-    const [profilesResult, waitlistResult, walletsResult, syncResult] =
-      await Promise.all([
-        admin
-          .from("profiles")
-          .select("id", { count: "exact", head: true })
-          .neq("status", "deleted"),
-        admin
-          .from("waitlist")
-          .select("id", { count: "exact", head: true }),
-        admin.from("wallets").select("balance"),
-        admin
-          .from("sync_runs")
-          .select("job, status, started_at, finished_at, error")
-          .order("started_at", { ascending: false })
-          .limit(5),
-      ]);
+    const [
+      profilesResult,
+      waitlistResult,
+      walletsResult,
+      openBetsResult,
+      syncResult,
+    ] = await Promise.all([
+      admin
+        .from("profiles")
+        .select("id", { count: "exact", head: true })
+        .neq("status", "deleted"),
+      admin
+        .from("waitlist")
+        .select("id", { count: "exact", head: true }),
+      admin.from("wallets").select("balance"),
+      admin
+        .from("bets")
+        .select("potential_payout")
+        .eq("status", "open"),
+      admin
+        .from("sync_runs")
+        .select("job, status, started_at, finished_at, error")
+        .order("started_at", { ascending: false })
+        .limit(6),
+    ]);
 
     if (
       profilesResult.error ||
       waitlistResult.error ||
       walletsResult.error ||
+      openBetsResult.error ||
       syncResult.error
     ) {
       dataError = "Some dashboard metrics could not be loaded.";
@@ -84,6 +96,11 @@ export default async function AdminDashboardPage() {
         (total, wallet) => total + Number(wallet.balance ?? 0),
         0,
       );
+      openBets = (openBetsResult.data ?? []).length;
+      openLiability = (openBetsResult.data ?? []).reduce(
+        (total, bet) => total + Number(bet.potential_payout ?? 0),
+        0,
+      );
       syncRuns = (syncResult.data ?? []) as SyncRun[];
     }
   }
@@ -92,26 +109,26 @@ export default async function AdminDashboardPage() {
     {
       label: "Active players",
       value: players.toString(),
-      detail: "Beta cap 100",
+      detail: `${waitlisted} on the waitlist`,
       icon: Users,
     },
     {
       label: "Coins in circulation",
       value: formatCoins(coinsInCirculation),
-      detail: "BET balances",
+      detail: "BET wallet balances",
       icon: CircleDollarSign,
     },
     {
-      label: "Waitlist",
-      value: waitlisted.toString(),
-      detail: "Emails waiting",
-      icon: Activity,
+      label: "Open bets",
+      value: openBets.toString(),
+      detail: "Awaiting final results",
+      icon: Ticket,
     },
     {
-      label: "Open bets",
-      value: "—",
-      detail: "Betting engine next",
-      icon: Ticket,
+      label: "Open liability",
+      value: formatCoins(openLiability),
+      detail: "Maximum potential payout",
+      icon: Coins,
     },
   ];
 
@@ -124,14 +141,14 @@ export default async function AdminDashboardPage() {
             Admin dashboard
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            Foundation metrics for the private beta.
+            Live operational metrics for the private beta.
           </p>
         </div>
         <Badge
           variant="outline"
-          className="w-fit border-warning/30 bg-warning/10 text-warning"
+          className="w-fit border-brand/30 bg-brand/10 text-brand"
         >
-          Week 0 foundation
+          Week 4 settlement
         </Badge>
       </div>
 
@@ -220,19 +237,19 @@ export default async function AdminDashboardPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <Database className="size-4 text-brand" />
-              Foundation checklist
+              Operational checklist
             </CardTitle>
             <CardDescription>
-              What is wired up before the fixture feed lands.
+              Core loops that are wired up for the beta.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
             {[
-              "Supabase auth and email/password flows",
-              "Profiles, wallets, ledger, daily claims",
-              "Beta cap trigger and waitlist",
-              "RLS on all user tables",
-              "Admin console shell and audit schema",
+              "Supabase auth, wallets, ledger, and daily claims",
+              "Sportmonks catalog, live scores, and pre-match odds",
+              "Atomic bet placement with odds snapshots",
+              "Automatic settlement with void recalculation",
+              "Admin settle/void actions and audit trail",
             ].map((item) => (
               <div key={item} className="flex items-start gap-2.5">
                 <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-brand" />
@@ -254,10 +271,10 @@ export default async function AdminDashboardPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <WalletCards className="size-4 text-brand" />
-            Next operational screens
+            Operational screens
           </CardTitle>
           <CardDescription>
-            These screens are scaffolded and unlock as their domains land.
+            Jump into the daily operating views.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">

@@ -5,8 +5,8 @@ beta. BET coins have no cash value. There are no purchases, cash-outs, prizes,
 or real-money wagers.
 
 **Status:** Foundation, catalog, Sportmonks provider sync, lobby, match detail,
-and the Week 3 betting engine are in place. Settlement and full admin
-operations are next.
+the Week 3 betting engine, and Week 4 settlement are in place. The remaining
+admin screens are next.
 
 ## Stack
 
@@ -48,9 +48,12 @@ The full product and delivery plan is in
 - Atomic `place_bet` RPC with idempotency, odds snapshots, wallet locking,
   duplicate-match rejection, stake limits, and a capped payout.
 - My Bets with open/settled tabs, leg results, and payout summaries.
+- Automatic settlement cron for 1X2, O/U 2.5, BTTS, and Double Chance, with
+  void-leg recalculation and full void/refund handling.
+- Admin Bets screen with audited settle/void actions and an audit log.
 - Demo catalog seeder for local UI work.
-- Admin dashboard shell plus placeholders for matches, bets, users,
-  transactions, settings, and audit.
+- Admin dashboard, bet settlement queue, and audit log; placeholders remain for
+  matches, users, transactions, and settings.
 - `noindex` metadata, `X-Robots-Tag`, and baseline security headers.
 - One-time admin bootstrap script.
 - Verified end-to-end against Supabase: admin login, protected-route redirects,
@@ -109,6 +112,8 @@ npx supabase db query --linked --project-ref <your-project-ref> \
 npx supabase db query --linked --project-ref <your-project-ref> \
   --file supabase/migrations/20261102000003_betting.sql --yes
 npx supabase db query --linked --project-ref <your-project-ref> \
+  --file supabase/migrations/20261102000004_settlement.sql --yes
+npx supabase db query --linked --project-ref <your-project-ref> \
   --file supabase/seed.sql --yes
 ```
 
@@ -118,7 +123,8 @@ Or paste these files into the Supabase SQL editor, in order:
 2. `supabase/migrations/20261102000001_catalog.sql`
 3. `supabase/migrations/20261102000002_sportmonks.sql`
 4. `supabase/migrations/20261102000003_betting.sql`
-5. `supabase/seed.sql`
+5. `supabase/migrations/20261102000004_settlement.sql`
+6. `supabase/seed.sql`
 
 The hosted CLI asks for explicit confirmation before write statements; pass
 `--yes` only after reviewing the file. Read-only checks can use `--read-only`
@@ -185,6 +191,8 @@ Open [http://localhost:3000](http://localhost:3000).
 - Coins are integer `bigint` values. Never use floats for balances.
 - All wallet mutations must be atomic Postgres functions with an idempotency
   key. Do not mutate balances directly from the client.
+- `place_bet` and `apply_bet_settlement` are the only writers for bets and
+  bet-leg outcomes. Do not settle via direct table updates.
 - RLS is enabled on every user table. The service-role key is server-only and
   bypasses RLS, so it must follow an explicit authorization check.
 
@@ -222,6 +230,7 @@ into Postgres, so the lobby and live polling never call Sportmonks directly.
 | `sync-live` | Every 2 minutes | In-play + today's results |
 | `sync-odds` | Every 10 minutes | Up to 8 fixtures |
 | `sync-fixtures` | Every 6 hours | Next 7 days |
+| `settle` | Every 5 minutes | No provider calls; final results already in Postgres |
 
 On the free plan this stays under the 180 requests/hour limit. Protect the
 routes with `Authorization: Bearer $CRON_SECRET`. The selected league IDs live
@@ -251,6 +260,33 @@ Limits: minimum stake **100**, maximum stake **50,000**, maximum payout
 **1,000,000** BET per bet. Odds are snapshotted on each leg; settlement will use
 the snapshot, not the live price.
 
+### Settlement
+
+`/api/cron/settle` runs every five minutes. It loads open bets whose legs have a
+final provider state and evaluates each leg from the regulation-time score:
+
+- **1X2:** home / draw / away.
+- **O/U 2.5:** over or under the stored line; an exact push is void.
+- **BTTS:** both teams scored.
+- **Double Chance:** 1X (home or draw), X2 (draw or away), 12 (home or away).
+
+`apply_bet_settlement` locks the bet and wallet, updates every leg, and settles
+once:
+
+- Any lost leg → bet lost, no payout.
+- All won → bet won, payout from the odds snapshots.
+- Some void + rest won → payout recalculated excluding the void legs.
+- All void → bet void, full stake refunded.
+
+Postponed and cancelled fixtures are void. A suspended match stays pending
+until it resumes or an admin resolves it. A repeat settlement call is a no-op,
+so overlapping cron runs cannot credit twice.
+
+Admins can settle from the provider result or void a bet from **Admin → Bets**.
+The action requires a reason and writes `admin_audit_logs` with before/after
+snapshots. Corrections after settlement are handled by a separate audited
+balance adjustment, never by silently editing the bet.
+
 ### Testing bets without polluting the ledger
 
 Use a transaction and roll it back for RPC checks:
@@ -274,6 +310,6 @@ cleanup.
 
 ## Next build
 
-1. Settlement engine, cron routes, and manual admin overrides.
-2. Full admin matches/bets/users/settings screens.
-3. RLS integration tests, rate limits, Sentry/PostHog, and staging beta.
+1. Full admin matches/users/settings/transactions screens.
+2. RLS integration tests, rate limits, Sentry/PostHog, and staging beta.
+3. Nigerian legal review and the Next.js security patch.

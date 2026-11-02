@@ -431,7 +431,13 @@ function mapScore(
     return { home: null, away: null };
   }
 
-  const priorities = ["CURRENT", "2ND_HALF", "1ST_HALF", "AET", "FT_PEN"];
+  // Settlement is regulation time only. `2ND_HALF` is the score at the end of
+  // the second half; `CURRENT` can include extra-time goals. Penalty shootouts
+  // (`FT_PEN`) must never leak into a bet result.
+  const priorities =
+    status === "finished"
+      ? ["2ND_HALF", "CURRENT", "1ST_HALF"]
+      : ["CURRENT", "2ND_HALF", "1ST_HALF"];
 
   for (const description of priorities) {
     const entries = (scores ?? []).filter(
