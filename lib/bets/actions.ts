@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { getCurrentUser } from "@/lib/auth/session";
+import { consumeRateLimit } from "@/lib/security/rate-limit";
 import {
   getSupabaseAdminClient,
   isSupabaseAdminConfigured,
@@ -142,6 +143,29 @@ export async function placeBetAction(
         code: "MAINTENANCE",
         message: "Betting is paused for maintenance. Please try again shortly.",
       };
+    }
+
+    try {
+      const rateLimit = await consumeRateLimit(
+        `bet:${context.user.id}`,
+        10,
+        60,
+      );
+
+      if (!rateLimit.allowed) {
+        return {
+          ok: false,
+          code: "RATE_LIMITED",
+          message: `Too many bet attempts. Please wait ${rateLimit.retryAfterSeconds} seconds and try again.`,
+        };
+      }
+    } catch (error) {
+      // The limiter is defense-in-depth. A transient limiter failure should not
+      // block the core betting flow; log it and continue.
+      console.error(
+        "[bets] Rate limit check failed",
+        error instanceof Error ? error.message : error,
+      );
     }
 
     const { data, error } = await admin.rpc("place_bet", {

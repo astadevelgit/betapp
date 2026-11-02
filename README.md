@@ -5,8 +5,9 @@ beta. BET coins have no cash value. There are no purchases, cash-outs, prizes,
 or real-money wagers.
 
 **Status:** Foundation, catalog, Sportmonks provider sync, lobby, match detail,
-the betting engine, settlement, and the full admin console are in place. Next is
-security hardening: RLS integration tests, rate limits, and observability.
+the betting engine, settlement, the full admin console, and Epic 6 security
+hardening are in place. Next is observability, the mobile viewport pass, and a
+staging beta.
 
 ## Stack
 
@@ -54,7 +55,13 @@ The full product and delivery plan is in
   users with audited balance adjustments and suspensions, ledger transactions,
   settings, and the audit log.
 - Demo catalog seeder for local UI work.
-- `noindex` metadata, `X-Robots-Tag`, and baseline security headers.
+- RLS on every user table, DB-backed fixed-window rate limits, a serialized beta
+  cap, daily cleanup of expired buckets and unverified signups, and a strict
+  `noindex` policy.
+- A static Content Security Policy plus COOP/CORP, HSTS, frame, MIME, referrer,
+  and permissions headers. The CSP deliberately keeps `'unsafe-inline'` for
+  Next.js hydration because nonce-based CSP is incompatible with Cache
+  Components/PPR.
 - One-time admin bootstrap script.
 - Verified end-to-end against Supabase: admin login, protected-route redirects,
   wallet balance and ledger, idempotent daily claim, and the confirmed-email
@@ -116,6 +123,8 @@ npx supabase db query --linked --project-ref <your-project-ref> \
 npx supabase db query --linked --project-ref <your-project-ref> \
   --file supabase/migrations/20261102000005_admin.sql --yes
 npx supabase db query --linked --project-ref <your-project-ref> \
+  --file supabase/migrations/20261102000006_security.sql --yes
+npx supabase db query --linked --project-ref <your-project-ref> \
   --file supabase/seed.sql --yes
 ```
 
@@ -127,7 +136,8 @@ Or paste these files into the Supabase SQL editor, in order:
 4. `supabase/migrations/20261102000003_betting.sql`
 5. `supabase/migrations/20261102000004_settlement.sql`
 6. `supabase/migrations/20261102000005_admin.sql`
-7. `supabase/seed.sql`
+7. `supabase/migrations/20261102000006_security.sql`
+8. `supabase/seed.sql`
 
 The hosted CLI asks for explicit confirmation before write statements; pass
 `--yes` only after reviewing the file. Read-only checks can use `--read-only`
@@ -199,6 +209,40 @@ Open [http://localhost:3000](http://localhost:3000).
 - RLS is enabled on every user table. The service-role key is server-only and
   bypasses RLS, so it must follow an explicit authorization check.
 
+## Security and abuse prevention
+
+- **Authorization:** every Server Action calls `requireUser()` or
+  `requireAdmin()`; user IDs come from the session, never from browser input.
+  Admin RPCs re-check the caller's role inside Postgres.
+- **RLS:** private tables have select-own policies and revoked direct grants.
+  Catalog tables are public-read. `rate_limit_buckets` has no authenticated or
+  anonymous policy and is service-role-only.
+- **Rate limits:** `consume_rate_limit` is an atomic Postgres fixed-window
+  counter. Bet placement is capped at **10 attempts/minute/user**; the waitlist
+  is capped at **5 submissions/minute/IP**. The IP is SHA-256 hashed with
+  `RATE_LIMIT_SALT` (falling back to `CRON_SECRET`) before storage.
+- **Beta cap:** `handle_new_user` takes a transaction-scoped advisory lock
+  before counting profiles, so concurrent signups cannot exceed `beta_cap`.
+- **Cleanup:** `/api/cron/cleanup` runs daily at 03:00 UTC. It deletes expired
+  rate-limit buckets and unverified `auth.users` older than 24 hours. Profiles
+  with bets are skipped.
+- **Headers:** CSP, COOP, CORP, Origin-Agent-Cluster,
+  X-Permitted-Cross-Domain-Policies, HSTS, `X-Frame-Options: DENY`, `nosniff`,
+  referrer, permissions, and `X-Robots-Tag: noindex`.
+- **Noindex:** metadata, `robots.ts`, and the response header all disallow
+  indexing.
+
+CSP uses `'unsafe-inline'` for scripts and styles rather than a per-request
+nonce. Next.js nonces require every page to render dynamically and are
+documented as incompatible with PPR, which this app uses through Cache
+Components. Revisit the CSP if the rendering model changes.
+
+Epic 6 was verified against the hosted project with rollback SQL assertions
+(grants, beta cap, purge, limiter), a two-session signup race, 11 bet attempts
+(10 accepted, 11th limited), 6 waitlist submissions (5 accepted, 6th limited),
+and a cleanup cron run that removed one expired bucket and one stale unverified
+account.
+
 ## Route map
 
 | Route | Access |
@@ -239,6 +283,9 @@ On the free plan this stays under the 180 requests/hour limit. Protect the
 routes with `Authorization: Bearer $CRON_SECRET`. The selected league IDs live
 in `SPORTMONKS_LEAGUE_IDS`; the `selected_league_ids` app setting is kept in
 sync for admin tooling.
+
+`/api/cron/cleanup` runs daily at 03:00 UTC for expired rate-limit buckets and
+unverified profiles, and logs to `sync_runs` under the `cleanup` job.
 
 ## Betting flow
 
@@ -341,6 +388,6 @@ cleanup.
 
 ## Next build
 
-1. RLS integration tests, rate limits, and security headers review.
-2. Sentry/PostHog, error boundaries, and staging beta.
+1. Sentry/PostHog, error boundaries, and staging beta.
+2. Mobile viewport smoke test.
 3. Nigerian legal review and the Next.js security patch.

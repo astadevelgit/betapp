@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import type { ActionState } from "@/lib/action-state";
+import { consumeRateLimit, hashClientIp } from "@/lib/security/rate-limit";
 import {
   getSupabaseAdminClient,
   isSupabaseAdminConfigured,
@@ -82,6 +83,41 @@ async function addToWaitlist(email: string, source = "signup"): Promise<void> {
   }
 }
 
+const WAITLIST_RATE_LIMIT = 5;
+const WAITLIST_RATE_WINDOW_SECONDS = 60;
+
+async function isWaitlistRateLimited(): Promise<boolean> {
+  if (!isSupabaseAdminConfigured()) {
+    return false;
+  }
+
+  try {
+    const ipHash = await hashClientIp();
+    const result = await consumeRateLimit(
+      `waitlist:${ipHash}`,
+      WAITLIST_RATE_LIMIT,
+      WAITLIST_RATE_WINDOW_SECONDS,
+    );
+    return !result.allowed;
+  } catch (error) {
+    // Do not take the waitlist down if the limiter is temporarily unavailable.
+    console.error(
+      "[waitlist] Rate limit check failed",
+      error instanceof Error ? error.message : error,
+    );
+    return false;
+  }
+}
+
+function waitlistRateLimitState(email: string): ActionState {
+  return {
+    status: "error",
+    message:
+      "Too many waitlist requests. Please wait a minute and try again.",
+    values: { email },
+  };
+}
+
 function betaFullState(email: string): ActionState {
   return {
     status: "error",
@@ -128,6 +164,10 @@ export async function signUpAction(
       await admin.rpc("beta_has_capacity");
 
     if (!capacityError && hasCapacity === false) {
+      if (await isWaitlistRateLimited()) {
+        return waitlistRateLimitState(email);
+      }
+
       await addToWaitlist(email);
       return betaFullState(email);
     }
@@ -158,6 +198,10 @@ export async function signUpAction(
       const { data: hasCapacity } = await admin.rpc("beta_has_capacity");
 
       if (hasCapacity === false) {
+        if (await isWaitlistRateLimited()) {
+          return waitlistRateLimitState(email);
+        }
+
         await addToWaitlist(email);
         return betaFullState(email);
       }
@@ -359,6 +403,10 @@ export async function joinWaitlistAction(
       message:
         "The waitlist is not connected yet. Add Supabase credentials to .env.local.",
     };
+  }
+
+  if (await isWaitlistRateLimited()) {
+    return waitlistRateLimitState(parsed.data.email);
   }
 
   await addToWaitlist(parsed.data.email, "waitlist_page");
