@@ -9,6 +9,7 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "check": "npm run lint && npm run typecheck",
+    "deploy:staging": "node scripts/deploy-staging.mjs",
     "db:generate": "drizzle-kit generate",
     "db:studio": "drizzle-kit studio",
     "seed:admin": "node --env-file=.env.local scripts/seed-admin.mjs",

@@ -4,22 +4,26 @@ A closed-loop, play-money football sportsbook for a Nigeria-focused private
 beta. BET coins have no cash value. There are no purchases, cash-outs, prizes,
 or real-money wagers.
 
-**Status:** Foundation, catalog, provider sync, lobby, match detail, the betting
-engine, settlement, the full admin console, Epic 6 security hardening, and Epic 7
-observability are in place. The Odds API is available as an optional third
-provider. Remaining work is the staging beta, a mobile viewport pass, the
-Next.js security patch, and Nigerian legal review.
+**Status:** Staging is deployed at **https://betapp-staging.vercel.app** on
+Vercel Hobby. The foundation, catalog, provider sync, lobby, match detail,
+betting engine, settlement, admin console, Epic 6 security hardening, and Epic 7
+observability are in place. Next.js **16.4.4** is applied, and The Odds API has
+been validated live with EPL fixtures and odds. Hobby accounts cannot run the
+per-minute cron schedule, so staging syncs are manual until Vercel Pro is
+enabled. Remaining work is credential rotation, Pro cron enablement,
+Sentry/PostHog/Resend configuration, a mobile viewport pass, and Nigerian legal
+review.
 
 ## Stack
 
-- Next.js **16.4.3** (App Router, Cache Components, Proxy, Server Actions)
+- Next.js **16.4.4** (App Router, Cache Components, Proxy, Server Actions)
 - React **19.3**, TypeScript, Tailwind CSS **v4**
 - shadcn/ui (Base UI variant), lucide-react
 - Supabase Postgres + Auth, `@supabase/ssr`
 - Drizzle ORM + `postgres` driver
 - Zod, React Hook Form, Zustand (installed for the bet slip)
-- Vercel Pro (cron), Sportmonks, API-Football, The Odds API, Resend, Sentry,
-  PostHog
+- Vercel **Hobby** for staging, **Pro** for scheduled crons; Sportmonks,
+  API-Football, The Odds API, Resend, Sentry, PostHog
 
 The full product and delivery plan is in
 [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md). Staging setup,
@@ -194,6 +198,57 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
+## Staging deployment
+
+Staging is live at **https://betapp-staging.vercel.app** (Vercel project
+`asta-2e53/betapp-staging`). It is publicly reachable but unlisted and marked
+`noindex`.
+
+| Item | Staging value |
+|---|---|
+| Provider | `FOOTBALL_PROVIDER=the-odds-api` |
+| Sport key | `soccer_epl` |
+| Fixture cap | `ODDS_SYNC_MAX_FIXTURES=40` |
+| Catalog | 10 EPL matches, 20 markets, 50 selections |
+| Next.js | 16.4.4 |
+| Cron jobs | Disabled on Hobby; run manually |
+
+`NEXT_PUBLIC_SITE_URL` is the staging URL, and Supabase Auth uses it as the Site
+URL with `https://betapp-staging.vercel.app/auth/callback` and
+`http://localhost:3000/auth/callback` allow-listed.
+
+### Deploy on Hobby
+
+Hobby accounts reject any cron schedule that runs more than once per day. The
+full Pro schedule stays in `vercel.json`; `vercel.staging.json` contains an empty
+schedule. Vercel's `--local-config` flag does **not** suppress the root
+`vercel.json` during deploy, so use the wrapper, which swaps in the staging
+config and restores the Pro config even when the deploy fails:
+
+```bash
+npm run deploy:staging
+```
+
+Do not edit `vercel.json` by hand before deploying.
+
+### Trigger jobs manually
+
+Until Vercel Pro is enabled, invoke the jobs with the same bearer secret Vercel
+would send. Set `CRON_SECRET` in the shell first, then:
+
+```powershell
+$headers = @{ Authorization = "Bearer $env:CRON_SECRET" }
+$base = "https://betapp-staging.vercel.app"
+foreach ($job in "sync-fixtures", "sync-odds", "sync-live", "settle", "cleanup") {
+  Invoke-RestMethod -Uri "$base/api/cron/$job" -Headers $headers
+}
+```
+
+Run `sync-fixtures` every 6 hours, `sync-odds` every 10 minutes, `sync-live`
+every 2 minutes while matches are in play, `settle` every 5 minutes, and
+`cleanup` once a day. On Pro, deploy normally with `npx vercel deploy --prod`;
+the five crons in `vercel.json` are registered automatically.
+
 ## Scripts
 
 | Command | Purpose |
@@ -203,6 +258,7 @@ Open [http://localhost:3000](http://localhost:3000).
 | `npm run lint` | ESLint |
 | `npm run typecheck` | TypeScript check |
 | `npm run check` | Lint + typecheck |
+| `npm run deploy:staging` | Deploy to Vercel staging with Hobby-safe crons |
 | `npm run db:generate` | Generate Drizzle SQL diff into `drizzle/` |
 | `npm run db:studio` | Drizzle Studio |
 | `npm run seed:admin` | Create/promote the seeded admin |
@@ -245,6 +301,24 @@ Open [http://localhost:3000](http://localhost:3000).
   referrer, permissions, and `X-Robots-Tag: noindex`.
 - **Noindex:** metadata, `robots.ts`, and the response header all disallow
   indexing.
+
+### Credential rotation
+
+`CRON_SECRET` was rotated and verified on 2026-11-03. The Supabase service-role
+key, Sportmonks token, and any The Odds API key that was printed by a CLI must
+still be treated as exposed until they are replaced.
+
+1. Create the replacement value in the provider dashboard.
+2. Update `.env.local`.
+3. Update Vercel Production and Preview by piping the value on stdin; never pass
+   a secret with `--value`, because the CLI echoes it into terminal output.
+4. Redeploy and verify the affected flow.
+5. Revoke the old value only after every deployment uses the replacement.
+
+Rotating the Supabase JWT secret invalidates both legacy anon and service-role
+keys and signs users out. Prefer creating a new `sb_secret_...` key, switching
+`SUPABASE_SERVICE_ROLE_KEY` (or `SUPABASE_SECRET_KEY`), then revoking the old
+key. The publishable/anon key can stay in place if the JWT secret is unchanged.
 
 CSP uses `'unsafe-inline'` for scripts and styles rather than a per-request
 nonce. Next.js nonces require every page to render dynamically and are
@@ -310,25 +384,31 @@ the [staging beta runbook](docs/STAGING_BETA_RUNBOOK.md).
 
 ## Current blockers
 
-- Staging is not deployed: the Vercel CLI is logged out and no
-  `.vercel/project.json` exists.
-- Sentry and PostHog credentials are not configured locally, so real delivery
-  and alerting are unverified.
+- **Vercel is on Hobby**, so the five production cron schedules are disabled.
+  Staging syncs and settlement are manual until Pro is enabled. The deployment
+  itself is live and healthy.
+- **Rotate exposed credentials before widening access:** the Supabase
+  service-role key, Sportmonks token, and any The Odds API key printed by the
+  CLI. `CRON_SECRET` has already been rotated. See
+  [Credential rotation](#credential-rotation).
+- Sentry and PostHog credentials are absent, so real error delivery, alerting,
+  and product events are unverified.
+- Resend/SMTP is not configured, so signup and password-reset email delivery is
+  untested.
 - `DATABASE_URL` and `DATABASE_URL_DIRECT` are blank locally; the Drizzle scripts
-  need them.
-- Docker/psql are not installed; use a remote Supabase project for now.
+  need them. Vercel staging does not use them at runtime.
+- Docker/psql are not installed; use the remote Supabase project for now.
 - The Sportmonks free plan covers only the Danish Superliga (`271`) and
   Scottish Premiership (`501`) with 180 requests/hour. Production coverage
-  needs a paid plan or a different provider token. Rotate the token that was
-  exposed during setup.
+  needs a paid plan or a different provider token.
 - The Odds API has no Nigerian league; `soccer_epl` is the default. Its free
   plan cannot sustain the default cron cadence, and BTTS/Double Chance are not
   in its bulk odds feed.
 - No permanent E2E test suite is checked in; smoke tests are manual.
 - Legal pages are beta placeholders and need Nigerian counsel review before a
   public launch.
-- **Patch Next.js 16.4.3 on Nov 3, 2026.** A security release is scheduled for
-  that date; upgrade and redeploy as soon as it ships.
+- No completed match has exercised automatic settlement end to end on staging
+  yet; the settlement path is covered by local and rolled-back database checks.
 
 ## Provider sync
 
@@ -341,6 +421,11 @@ into Postgres, so the lobby and live polling never call Sportmonks directly.
 | `sync-odds` | Every 10 minutes | Up to 8 fixtures; refreshes markets older than 5 minutes |
 | `sync-fixtures` | Every 6 hours | Next 7 days |
 | `settle` | Every 5 minutes | No provider calls; final results already in Postgres |
+
+Staging was validated against the live The Odds API on 2026-11-03: **10 EPL
+fixtures, 20 markets, 50 selections**, and zero odds failures. The events
+request must use `YYYY-MM-DDTHH:MM:SSZ`; ISO timestamps with milliseconds are
+rejected with HTTP 422.
 
 `sync-odds` uses a fixed 5-minute refresh window so each run picks up markets
 that were not refreshed recently, regardless of the betting cutoff. Betting is
@@ -365,7 +450,13 @@ when Sportmonks or API-Football credentials are present. To use it explicitly:
 FOOTBALL_PROVIDER=the-odds-api
 THE_ODDS_API_KEY=...
 THE_ODDS_API_SPORT_KEYS=soccer_epl
+ODDS_SYNC_MAX_FIXTURES=40
 ```
+
+Staging currently runs this exact configuration against `soccer_epl`. The live
+adapter validated 10 fixtures, 20 markets, and 50 selections with zero odds
+failures. Fixture discovery uses the free events endpoint; one bulk odds call
+covers the whole slate.
 
 The adapter uses the credit-efficient endpoints:
 

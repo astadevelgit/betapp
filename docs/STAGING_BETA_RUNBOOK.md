@@ -3,9 +3,9 @@
 Operational guide for taking BetApp from a verified local build to a private,
 100-player staging beta.
 
-**Last updated:** 2026-11-02  
-**Applies to:** Next.js 16.4.3, Supabase Postgres/Auth, Vercel Pro, Sentry 10,
-PostHog, Sportmonks or The Odds API.
+**Last updated:** 2026-11-03  
+**Applies to:** Next.js 16.4.4, Supabase Postgres/Auth, Vercel Hobby for staging
+(Pro for scheduled crons), Sentry 10, PostHog, Sportmonks or The Odds API.
 
 > BetApp is play-money only. BET coins have no cash value and cannot be
 > purchased, cashed out, or exchanged for prizes. The beta is 18+ and intended
@@ -52,11 +52,16 @@ Daily claims reset on the Africa/Lagos calendar day.
 
 Collect these before deployment:
 
-- [ ] Vercel Pro account with access to the project.
+- [ ] Vercel account with access to the project. **Hobby** can host the app but
+      only allows daily crons; **Pro** is required for the five production
+      schedules in section 4.3.
+- [ ] Vercel CLI authenticated and the project linked: `npx vercel whoami`.
 - [ ] Supabase project (staging project, separate from any future production
-      project).
+      project) and the Supabase CLI linked.
 - [ ] A football data provider key:
       Sportmonks (full markets) **or** The Odds API (1X2 and O/U 2.5 only).
+- [ ] Any credential that was echoed in terminal output has been rotated before
+      testers are invited. See section 4.4.
 - [ ] `CRON_SECRET` — at least 32 random characters.
 - [ ] `RATE_LIMIT_SALT` — a second random value, not reused from `CRON_SECRET`.
 - [ ] Resend account and a verified sending domain, configured as Supabase Auth
@@ -91,10 +96,12 @@ Do not commit real values. `.env.local` is ignored by git.
 Apply every file in `supabase/migrations/` in numeric order, followed by
 `supabase/seed.sql`. Use the Supabase CLI or the SQL editor.
 
-The verified staging project has migrations through
-`20261102000006_security.sql`. Apply `20261102000007_stale_odds.sql` before
-opening betting; it adds the atomic stale-odds guard to `place_bet`. Then apply
-`20261102000008_odds_cutoff.sql` to move the cutoff from 300 to 900 seconds.
+The staging project is fully migrated through
+`20261102000008_odds_cutoff.sql`. Migration 7 adds the atomic stale-odds guard
+to `place_bet`; migration 8 moves the betting cutoff from 300 to 900 seconds.
+They were applied with `supabase db query --file`, so the remote migration
+history may be empty. Do not run `supabase db push` blindly against this
+project; apply new files explicitly and record the result.
 
 After applying, confirm:
 
@@ -121,6 +128,27 @@ Expected economy values: `signup_bonus=10000`, `daily_claim=2000`,
 `beta_enabled=true`, `maintenance_mode=false`, `odds_stale_seconds=900`.
 
 ### 3.3 Configure Auth
+
+The staging project is already configured with:
+
+- Site URL: `https://betapp-staging.vercel.app`
+- Redirect URLs: `https://betapp-staging.vercel.app/auth/callback` and
+  `http://localhost:3000/auth/callback`
+
+To change these without resetting unrelated Auth settings, use a minimal
+temporary config and the CLI's config workflow:
+
+```powershell
+$dir = Join-Path $env:TEMP "betapp-supabase-config"
+npx supabase init --workdir $dir --yes
+# Write only auth.site_url and auth.additional_redirect_urls to
+# $dir\supabase\config.toml, then preview and apply:
+npx supabase config diff --remote=<project-ref> --workdir $dir
+npx supabase config push --remote=<project-ref> --workdir $dir --yes
+```
+
+`config push` leaves remote properties that are not declared in the temporary
+file unchanged. Do not commit a partial `supabase/config.toml` to the repo.
 
 1. **Auth → URL Configuration**
    - Site URL: the staging URL, e.g. `https://betapp-staging.vercel.app`.
@@ -170,20 +198,29 @@ audited; restore it to 100 immediately afterwards.
 
 ## 4. Vercel deployment
 
-### 4.1 Import and configure
+### 4.1 Current staging project
 
-1. Import the repository into Vercel.
-2. Framework preset: Next.js. Build command: `npm run build`. Node.js 22+.
-3. Set the environment variables in **Settings → Environment Variables** for
-   Production and Preview as appropriate.
-4. Deploy. Vercel will read the five cron jobs from `vercel.json`.
-5. Add the staging domain. Prefer an unguessable subdomain over a descriptive
-   one, and do not publish it.
-6. Set `NEXT_PUBLIC_SITE_URL` to the final staging URL and redeploy. This value
-   is used for Supabase email redirects.
+| Item | Value |
+|---|---|
+| Vercel project | `asta-2e53/betapp-staging` |
+| Production URL | `https://betapp-staging.vercel.app` |
+| Plan | Hobby (per-minute crons blocked) |
+| Region | `iad1` |
+| Node.js | 26.x |
+| Framework | Next.js, build `npm run build` |
+| Provider | `FOOTBALL_PROVIDER=the-odds-api` |
+| Sport key | `soccer_epl` |
+| Fixture cap | `ODDS_SYNC_MAX_FIXTURES=40` |
 
-`NEXT_PUBLIC_*` values are inlined at build time. Changing one requires a new
-deployment; editing it in the dashboard alone does not update the running app.
+The deployment is public and unlisted. `X-Robots-Tag: noindex` and
+`robots.txt` are verified.
+
+To recreate the project: link it with
+`npx vercel link --yes --scope asta-2e53 --project betapp-staging`, set the
+environment variables in **Settings → Environment Variables** for Production
+and Preview, deploy, then set `NEXT_PUBLIC_SITE_URL` to the final URL and
+redeploy. `NEXT_PUBLIC_*` values are inlined at build time; editing one in the
+dashboard alone does not update the running app.
 
 ### 4.2 Required environment variables
 
@@ -192,9 +229,9 @@ deployment; editing it in the dashboard alone does not update the running app.
 | `NEXT_PUBLIC_SITE_URL` | Public | Final staging URL, no trailing slash |
 | `NEXT_PUBLIC_SUPABASE_URL` | Public | Supabase project URL |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Public | Publishable/anon key |
-| `SUPABASE_SERVICE_ROLE_KEY` | Server | Service-role/secret key |
-| `DATABASE_URL` | Server | Transaction pooler, port 6543 |
-| `DATABASE_URL_DIRECT` | Server | Direct connection, port 5432, for Drizzle tooling |
+| `SUPABASE_SERVICE_ROLE_KEY` | Server | Service-role key or `sb_secret_...` key |
+| `DATABASE_URL` | Local/tooling | Transaction pooler, port 6543; not set on Vercel staging |
+| `DATABASE_URL_DIRECT` | Local/tooling | Direct connection, port 5432, for Drizzle tooling |
 | `CRON_SECRET` | Server | Vercel sends it as `Authorization: Bearer ...` |
 | `RATE_LIMIT_SALT` | Server | Salt for hashed waitlist IPs |
 | `FOOTBALL_PROVIDER` | Server | `sportmonks`, `api-football`, or `the-odds-api` |
@@ -204,6 +241,7 @@ deployment; editing it in the dashboard alone does not update the running app.
 | `THE_ODDS_API_SPORT_KEYS` | Server | e.g. `soccer_epl` |
 | `THE_ODDS_API_REGIONS` | Server | Default `eu`; each region multiplies odds cost |
 | `THE_ODDS_API_MARKETS` | Server | `h2h,totals` only |
+| `ODDS_SYNC_MAX_FIXTURES` | Server | `40` on staging; limits rows processed, not provider cost |
 | `NEXT_PUBLIC_SENTRY_DSN` | Public | Browser errors |
 | `SENTRY_DSN` | Server | Server/edge errors; may equal the public DSN |
 | `NEXT_PUBLIC_SENTRY_ENVIRONMENT` | Public | `staging` |
@@ -218,11 +256,13 @@ deployment; editing it in the dashboard alone does not update the running app.
 
 The app runs without Sentry and PostHog keys: both are no-ops when unset. It
 cannot authenticate users without Supabase, and it cannot sync fixtures or odds
-without `CRON_SECRET` and a provider key.
+without `CRON_SECRET` and a provider key. Staging currently has the Supabase,
+provider, cron, rate-limit, and PostHog-host values; Sentry, PostHog key, and
+Resend are still missing.
 
-### 4.3 Confirm crons
+### 4.3 Crons and the Hobby limit
 
-`vercel.json` defines:
+`vercel.json` defines the full production schedule:
 
 | Job | Schedule | Purpose |
 |---|---|---|
@@ -232,27 +272,84 @@ without `CRON_SECRET` and a provider key.
 | `/api/cron/settle` | Every 5 minutes | Settle finished bets |
 | `/api/cron/cleanup` | Daily at 03:00 UTC | Expired rate limits and unverified signups |
 
-In Vercel, open **Cron Jobs** and confirm all five are listed with recent
-invocations. Vercel Pro is required for per-minute schedules.
+**Hobby accounts reject any schedule that runs more than once per day:**
 
-Manual verification:
+```text
+Hobby accounts are limited to daily cron jobs. This cron expression
+(*/2 * * * *) would run more than once per day.
+```
+
+Staging therefore deploys with **no crons**. `vercel.staging.json` holds the
+empty schedule, and the wrapper swaps it into `vercel.json` for the deploy and
+restores the Pro schedule afterwards, even on failure:
+
+```powershell
+npm run deploy:staging
+```
+
+Do not use `npx vercel deploy --prod -A vercel.staging.json` for this. The
+`--local-config` flag does not suppress the root `vercel.json`; Vercel still
+validates its cron entries and rejects the deployment.
+
+Manual invocation until Pro is enabled:
 
 ```powershell
 $headers = @{ Authorization = "Bearer $env:CRON_SECRET" }
-Invoke-RestMethod -Uri "https://<staging-host>/api/cron/sync-fixtures" -Headers $headers
-Invoke-RestMethod -Uri "https://<staging-host>/api/cron/sync-odds" -Headers $headers
-Invoke-RestMethod -Uri "https://<staging-host>/api/cron/sync-live" -Headers $headers
-Invoke-RestMethod -Uri "https://<staging-host>/api/cron/settle" -Headers $headers
+$base = "https://betapp-staging.vercel.app"
+foreach ($job in "sync-fixtures", "sync-odds", "sync-live", "settle", "cleanup") {
+  Invoke-RestMethod -Uri "$base/api/cron/$job" -Headers $headers
+}
 ```
 
 Expected: `{ ok: true, job: "...", recordsProcessed: N, ... }`. A missing or
 wrong secret returns `401`; a missing `CRON_SECRET` returns `503`. Provider
-failures return `500` and are captured in Sentry with a `cron_job` tag.
+failures return `500` and are captured in Sentry with a `cron_job` tag once
+Sentry is configured.
+
+Once the project is on Pro, deploy normally with `npx vercel deploy --prod`.
+Open **Cron Jobs** and confirm all five appear with recent invocations.
 
 Check Admin → Matches for recent `sync_runs`: fixtures, live scores, odds,
 settlement, and cleanup. The cleanup card shows how many expired rate-limit
 buckets and unverified profiles were removed. Cross-check with the Vercel cron
 log or a read-only SQL query during incident review.
+
+### 4.4 Rotate exposed credentials
+
+The first CLI `vercel env add --value` calls echoed secrets into terminal
+output. Treat those values as compromised. `CRON_SECRET` was rotated on
+2026-11-03 and the new value successfully triggered `sync-odds`; the old value
+is no longer in Vercel.
+
+| Credential | Status | Rotation path |
+|---|---|---|
+| `CRON_SECRET` | Rotated and verified | Generate locally, update Production and Preview, redeploy |
+| Supabase service-role / secret key | **Pending** | Supabase Dashboard → Settings → API keys; create a new secret key |
+| `SPORTMONKS_API_TOKEN` | **Pending** | Sportmonks dashboard → API token |
+| `THE_ODDS_API_KEY` | **Pending** | The Odds API dashboard → API key |
+
+For each replacement:
+
+1. Create the new value in the provider dashboard.
+2. Update `.env.local`.
+3. Pipe the value on stdin to Vercel; never use `--value`:
+
+   ```powershell
+   foreach ($target in "production", "preview") {
+     Get-Content .\secret.txt | npx vercel env add NAME --environment $target `
+       --force --type secret --scope asta-2e53 --project betapp-staging
+   }
+   Remove-Item .\secret.txt
+   ```
+
+4. Redeploy with `npm run deploy:staging`.
+5. Verify the affected flow, then revoke the old value.
+
+Rotating the Supabase JWT secret invalidates both legacy anon and service-role
+keys and signs users out. Prefer creating an `sb_secret_...` key, switching
+`SUPABASE_SERVICE_ROLE_KEY` (or `SUPABASE_SECRET_KEY`), and only then disabling
+the legacy keys. If the publishable/anon key stays on the current JWT, it can
+remain in place.
 
 ---
 
@@ -262,6 +359,12 @@ log or a read-only SQL query during incident review.
 
 Set `FOOTBALL_PROVIDER` so a leftover key cannot silently change the data
 source. Automatic priority is Sportmonks → API-Football → The Odds API.
+
+**Current staging selection:** `FOOTBALL_PROVIDER=the-odds-api`,
+`THE_ODDS_API_SPORT_KEYS=soccer_epl`, `ODDS_SYNC_MAX_FIXTURES=40`. Live
+validation on 2026-11-03 produced **10 EPL fixtures, 20 markets, 50
+selections**, and zero odds failures. The events endpoint requires
+`YYYY-MM-DDTHH:MM:SSZ`; ISO timestamps with milliseconds return HTTP 422.
 
 **Sportmonks** is the only provider that supplies all four BetApp markets
 (1X2, O/U 2.5, BTTS, Double Chance). The free plan covers only leagues `271`
@@ -288,6 +391,10 @@ source. Automatic priority is Sportmonks → API-Football → The Odds API.
 
 ### 5.2 Verify the data path
 
+On staging, the expected first-run result is 10 matches, 20 markets (1X2 and
+O/U 2.5), and 50 selections. A successful `sync-odds` reports
+`recordsProcessed: 10` and `failures: 0`.
+
 1. Run `sync-fixtures`. Check that competitions, teams, matches, markets, and
    selections appear.
 2. Run `sync-odds`. Check that each scheduled match has prices and an
@@ -306,6 +413,10 @@ provider marks it complete.
 ---
 
 ## 6. Sentry setup
+
+> **Staging status:** no DSN or auth token is configured yet. Error delivery,
+> source maps, and alerting are unverified. Complete this section before
+> inviting testers.
 
 ### 6.1 Create the project
 
@@ -373,6 +484,9 @@ the first staging smoke test must confirm it.
 
 ## 7. PostHog setup
 
+> **Staging status:** only `NEXT_PUBLIC_POSTHOG_HOST` is set. Without a project
+> key, analytics calls are no-ops and no events have been delivered.
+
 1. Create a PostHog project on the EU host.
 2. Set `NEXT_PUBLIC_POSTHOG_KEY` and
    `NEXT_PUBLIC_POSTHOG_HOST=https://eu.i.posthog.com`.
@@ -412,6 +526,24 @@ never block signup, betting, settlement, or wallet operations.
 
 Run this on the staging URL after every deploy that changes auth, betting,
 settlement, provider sync, or headers. Use a real inbox you control.
+
+### Staging verification status (2026-11-03)
+
+| Check | Result |
+|---|---|
+| Home, `/live`, `/auth/login`, `/auth/register`, match detail, `/api/live` | Pass, HTTP 200 |
+| EPL teams, 1X2, and O/U 2.5 render from provider data | Pass |
+| Live fixture and odds sync | Pass: 10 fixtures, 20 markets, 50 selections, 0 odds failures |
+| Admin Supabase login | Pass |
+| Atomic `place_bet` rollback smoke test | Pass: 100 BET at 4.75; wallet restored to 12,000 BET / 0 bets |
+| Stale-odds guard | Pass: stale attempt returned `ODDS_STALE`; fresh attempt accepted |
+| `robots.txt` and `X-Robots-Tag` | Pass |
+| Signup and reset email delivery | Pending: Resend/SMTP not configured |
+| Sentry delivery and alerts | Pending: no DSN |
+| PostHog event delivery | Pending: no project key |
+| Automatic settlement of a completed match | Pending: no staging match has finished yet |
+| Scheduled crons | Blocked: Hobby plan |
+| Credential rotation | Partial: `CRON_SECRET` done; provider keys pending |
 
 ### Public and SEO
 
@@ -575,9 +707,11 @@ Do not widen access beyond the 100-player beta until all of these are true:
 - [ ] Beta cap and waitlist behave correctly under concurrency.
 - [ ] Legal pages have Nigerian counsel review; 18+ and play-money messaging is
       clear.
-- [ ] Next.js 16.4.3 security patch (scheduled Nov 3, 2026) is applied and
-      redeployed.
-- [ ] Sportmonks token exposed during setup has been rotated.
+- [x] Next.js 16.4.4 security patch applied and redeployed (2026-11-03).
+- [ ] Vercel Pro enabled and all five crons running on schedule.
+- [ ] Exposed Supabase service-role key, Sportmonks token, and The Odds API key
+      rotated; old values revoked.
+- [ ] Resend SMTP configured; signup confirmation and password reset delivered.
 - [ ] Backup/restore and admin access procedures are documented and tested.
 
 Until then, keep the URL unlisted, `noindex` in place, and the cap at 100.
@@ -638,13 +772,19 @@ admin console or the existing RPCs.
 
 ### Known gaps at the time of writing
 
-- Staging has not been deployed: Vercel CLI is logged out and no
-  `.vercel/project.json` exists.
-- Sentry and PostHog credentials are not configured locally, so real delivery
-  and alerting are unverified.
-- No `THE_ODDS_API_KEY` is configured locally; the adapter has been tested
-  against mocked responses, not the live API.
+- Staging runs on Vercel **Hobby**, so the five crons are disabled and syncs are
+  manual. The deployment itself is healthy at
+  `https://betapp-staging.vercel.app`.
+- The Supabase service-role key, Sportmonks token, and The Odds API key still
+  need rotation if they were echoed by the CLI. `CRON_SECRET` is rotated.
+- Sentry and PostHog credentials are absent, so error delivery, alerting, and
+  product events are unverified.
+- Resend/SMTP is not configured; signup and password-reset email delivery is
+  untested.
+- No completed staging match has exercised automatic settlement end to end.
+- The Odds API live sync is validated (10 fixtures, 20 markets, 50 selections),
+  but its free plan cannot sustain the default cron cadence. BTTS and Double
+  Chance are not in its bulk feed.
 - Sportmonks free-plan coverage is limited to Denmark and Scotland.
-- The Odds API has no Nigerian league and its free plan cannot sustain the
-  default cron cadence.
+- No permanent E2E suite is checked in; smoke tests are manual.
 - Legal pages remain beta placeholders.
