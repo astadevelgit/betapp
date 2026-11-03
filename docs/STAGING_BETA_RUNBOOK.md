@@ -533,6 +533,7 @@ settlement, provider sync, or headers. Use a real inbox you control.
 |---|---|
 | Home, `/live`, `/auth/login`, `/auth/register`, match detail, `/api/live` | Pass, HTTP 200 |
 | EPL teams, 1X2, and O/U 2.5 render from provider data | Pass |
+| EPL team crests | Pass: 20/20 teams mapped to local PNG assets |
 | Live fixture and odds sync | Pass: 10 fixtures, 20 markets, 50 selections, 0 odds failures |
 | Admin Supabase login | Pass |
 | Atomic `place_bet` rollback smoke test | Pass: 100 BET at 4.75; wallet restored to 12,000 BET / 0 bets |
@@ -548,6 +549,7 @@ settlement, provider sync, or headers. Use a real inbox you control.
 ### Public and SEO
 
 - [ ] `/` loads fixtures and markets; no horizontal scroll at 360px width.
+- [ ] EPL team crests render on the lobby, live cards, and match detail.
 - [ ] `/live` loads and polls scores.
 - [ ] Match detail opens from the lobby; markets close after kickoff.
 - [ ] `/legal` and `/waitlist` render.

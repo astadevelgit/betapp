@@ -1,5 +1,6 @@
 import "server-only";
 
+import { eplTeamLogoUrl } from "./epl-team-logos";
 import {
   ProviderError,
   type OddsProvider,
@@ -10,6 +11,7 @@ import {
   type ProviderOdds,
   type ProviderSelection,
   type ProviderSelectionName,
+  type ProviderTeam,
 } from "./types";
 
 const DEFAULT_BASE_URL = "https://api.the-odds-api.com/v4";
@@ -392,16 +394,8 @@ function mapEventToFixture(event: TheOddsApiEvent): ProviderFixture {
       logoUrl: null,
       season: null,
     },
-    homeTeam: {
-      externalId: event.home_team,
-      name: event.home_team,
-      logoUrl: null,
-    },
-    awayTeam: {
-      externalId: event.away_team,
-      name: event.away_team,
-      logoUrl: null,
-    },
+    homeTeam: mapOddsTeam(event.home_team),
+    awayTeam: mapOddsTeam(event.away_team),
     kickoffAt: event.commence_time,
     status: "scheduled",
     homeScore: null,
@@ -410,6 +404,14 @@ function mapEventToFixture(event: TheOddsApiEvent): ProviderFixture {
     round: null,
     venue: null,
     rawStatus: "scheduled",
+  };
+}
+
+function mapOddsTeam(name: string): ProviderTeam {
+  return {
+    externalId: name,
+    name,
+    logoUrl: eplTeamLogoUrl(name),
   };
 }
 
@@ -434,16 +436,8 @@ function mapScoreEvent(
       logoUrl: null,
       season: null,
     },
-    homeTeam: {
-      externalId: event.home_team,
-      name: event.home_team,
-      logoUrl: null,
-    },
-    awayTeam: {
-      externalId: event.away_team,
-      name: event.away_team,
-      logoUrl: null,
-    },
+    homeTeam: mapOddsTeam(event.home_team),
+    awayTeam: mapOddsTeam(event.away_team),
     kickoffAt: event.commence_time,
     status,
     homeScore: score.home,

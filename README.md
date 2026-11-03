@@ -441,6 +441,18 @@ sync for admin tooling.
 `/api/cron/cleanup` runs daily at 03:00 UTC for expired rate-limit buckets and
 unverified profiles, and logs to `sync_runs` under the `cleanup` job.
 
+### Team crests
+
+The Odds API supplies team names but not images. The 20 current EPL crests are
+bundled in `public/teams/epl/` and mapped by team name in
+`lib/provider/epl-team-logos.ts`. Unknown teams fall back to their initials, and
+catalog sync preserves an existing `logo_url` when a provider returns `null`.
+
+When clubs are promoted or relegated, replace the affected PNGs and update the
+mapping. The images are sourced from
+[FootyLogos.com](https://www.footylogos.com/); club crests remain the property
+of their respective owners and are credited on `/legal#credits`.
+
 ### The Odds API (optional)
 
 The Odds API is supported as a third provider. It is not selected automatically

@@ -14,15 +14,25 @@ export function TeamCrest({
   className?: string;
 }) {
   if (logoUrl) {
+    const imageSize = Math.max(16, Math.round(size * 0.82));
+
     return (
-      <Image
-        src={logoUrl}
-        alt=""
-        width={size}
-        height={size}
-        className={cn("shrink-0 object-contain", className)}
+      <span
+        className={cn(
+          "grid shrink-0 place-items-center overflow-hidden rounded-full bg-white/95 ring-1 ring-black/10",
+          className,
+        )}
         style={{ width: size, height: size }}
-      />
+      >
+        <Image
+          src={logoUrl}
+          alt=""
+          width={imageSize}
+          height={imageSize}
+          className="object-contain"
+          style={{ width: imageSize, height: imageSize }}
+        />
+      </span>
     );
   }
 

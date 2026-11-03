@@ -70,6 +70,33 @@ export default function LegalPage() {
           </CardContent>
         </Card>
 
+        <Card id="credits" className="scroll-mt-24 border-border/80 bg-card/80">
+          <CardHeader>
+            <CardTitle>Asset credits</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm leading-6 text-muted-foreground">
+            <p>
+              Club crests identify the teams in fixtures and remain the
+              intellectual property of their respective clubs. The Premier
+              League crest images used in this private beta are sourced from{" "}
+              <a
+                href="https://www.footylogos.com/"
+                className="font-medium text-foreground underline-offset-4 hover:underline"
+                target="_blank"
+                rel="noreferrer"
+              >
+                FootyLogos.com
+              </a>
+              .
+            </p>
+            <p>
+              These marks are used for identification only and do not imply any
+              affiliation with or endorsement by the clubs or the Premier
+              League.
+            </p>
+          </CardContent>
+        </Card>
+
         <Card
           id="responsible-play"
           className="scroll-mt-24 border-border/80 bg-card/80"

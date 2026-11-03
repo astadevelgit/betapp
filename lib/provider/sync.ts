@@ -259,11 +259,27 @@ async function upsertCatalog(
     (competitionData ?? []).map((row) => [row.external_id, row.id]),
   );
 
+  const { data: existingTeamData, error: existingTeamError } = await admin
+    .from("teams")
+    .select("external_id, logo_url")
+    .in(
+      "external_id",
+      teams.map((team) => team.externalId),
+    );
+
+  if (existingTeamError) {
+    throw new Error(`Could not read existing team logos: ${existingTeamError.message}`);
+  }
+
+  const existingTeamLogos = new Map(
+    (existingTeamData ?? []).map((row) => [row.external_id, row.logo_url]),
+  );
+
   const teamRows = teams.map((team) => ({
     external_id: team.externalId,
     source,
     name: team.name,
-    logo_url: team.logoUrl,
+    logo_url: team.logoUrl ?? existingTeamLogos.get(team.externalId) ?? null,
   }));
 
   const { data: teamData, error: teamError } = await admin

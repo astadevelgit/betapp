@@ -29,6 +29,9 @@ export function SiteFooter() {
             <Link href="/legal#responsible-play" className="hover:text-foreground">
               Responsible play
             </Link>
+            <Link href="/legal#credits" className="hover:text-foreground">
+              Asset credits
+            </Link>
           </div>
         </div>
       </div>

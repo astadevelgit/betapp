@@ -110,7 +110,7 @@ function TeamRow({
   return (
     <div className="flex items-center justify-between gap-3">
       <div className="flex min-w-0 items-center gap-2.5">
-        <TeamCrest name={name} logoUrl={logoUrl} size={24} />
+        <TeamCrest name={name} logoUrl={logoUrl} size={32} />
         <span className="truncate text-sm font-medium">{name}</span>
       </div>
       {score !== null ? (
