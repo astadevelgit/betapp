@@ -4,10 +4,11 @@ A closed-loop, play-money football sportsbook for a Nigeria-focused private
 beta. BET coins have no cash value. There are no purchases, cash-outs, prizes,
 or real-money wagers.
 
-**Status:** Foundation, catalog, Sportmonks provider sync, lobby, match detail,
-the betting engine, settlement, the full admin console, and Epic 6 security
-hardening are in place. Next is observability, the mobile viewport pass, and a
-staging beta.
+**Status:** Foundation, catalog, provider sync, lobby, match detail, the betting
+engine, settlement, the full admin console, Epic 6 security hardening, and Epic 7
+observability are in place. The Odds API is available as an optional third
+provider. Remaining work is the staging beta, a mobile viewport pass, the
+Next.js security patch, and Nigerian legal review.
 
 ## Stack
 
@@ -17,10 +18,13 @@ staging beta.
 - Supabase Postgres + Auth, `@supabase/ssr`
 - Drizzle ORM + `postgres` driver
 - Zod, React Hook Form, Zustand (installed for the bet slip)
-- Vercel Pro (cron), Sportmonks, Resend, Sentry, PostHog
+- Vercel Pro (cron), Sportmonks, API-Football, The Odds API, Resend, Sentry,
+  PostHog
 
 The full product and delivery plan is in
-[`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md).
+[`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md). Staging setup,
+smoke tests, and incident handling are in
+[`docs/STAGING_BETA_RUNBOOK.md`](docs/STAGING_BETA_RUNBOOK.md).
 
 ## What is in this foundation
 
@@ -39,7 +43,8 @@ The full product and delivery plan is in
 - Drizzle schema mirror and lazy server database client.
 - Wallet page with balance, daily claim, and ledger activity.
 - Catalog schema for competitions, teams, matches, markets, and selections.
-- Sportmonks adapter for fixtures, live scores, results, and pre-match odds.
+- Provider adapters for Sportmonks, API-Football, and The Odds API behind one
+  normalized interface, with explicit `FOOTBALL_PROVIDER` selection.
 - Protected cron sync jobs with `sync_runs` logging and rate-limit-aware
   scheduling.
 - Public lobby, live centre, and match detail with markets and 60-second live
@@ -63,9 +68,12 @@ The full product and delivery plan is in
   Next.js hydration because nonce-based CSP is incompatible with Cache
   Components/PPR.
 - One-time admin bootstrap script.
+- Sentry on the client, server, edge runtime, and every error boundary, plus
+  PostHog product events that identify users by Supabase ID only.
 - Verified end-to-end against Supabase: admin login, protected-route redirects,
   wallet balance and ledger, idempotent daily claim, and the confirmed-email
-  signup bonus (10,000 BET).
+  signup bonus (10,000 BET). A production build was used to verify a hydrated
+  error boundary with a real digest.
 
 ## Prerequisites
 
@@ -243,6 +251,44 @@ Epic 6 was verified against the hosted project with rollback SQL assertions
 and a cleanup cron run that removed one expired bucket and one stale unverified
 account.
 
+## Observability
+
+Sentry and PostHog are optional. Without their keys, both integrations are
+no-ops; they never block signup, betting, settlement, or wallet operations.
+
+**Sentry** covers the browser, Node server, and edge runtime. `instrumentation.ts`
+registers the server/edge SDK and captures Server Component, Server Action,
+Route Handler, and Proxy errors through `onRequestError`. Every error boundary
+uses `components/system/error-state.tsx`, reports with a `boundary` tag, and
+shows **Try again** plus a digest reference:
+
+| Boundary | Scope tag |
+|---|---|
+| `app/global-error.tsx` | `global` |
+| `app/error.tsx` | `root` |
+| `app/(public)/error.tsx` | `public` |
+| `app/(app)/error.tsx` | `app` |
+| `app/(auth)/error.tsx` | `auth` |
+| `app/admin/error.tsx` | `admin` |
+
+Cron errors are captured with a `cron_job` tag; settlement failures are reported
+as a warning when any bet fails to settle. `sendDefaultPii` is `false` and logs
+are disabled. Source maps upload only when `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, and
+`SENTRY_PROJECT` are all present.
+
+**PostHog** captures ten named product events: `signup_started`,
+`signup_completed`, `login`, `match_viewed`, `bet_slip_add`, `bet_placed`,
+`bet_failed`, `daily_claim`, `bet_settled`, and `waitlist_join`. Signed-in users
+are identified by their Supabase UUID, never by email. Autocapture, session
+recording, exception capture, and person profiles for anonymous users are
+disabled. The waitlist uses a random distinct ID with
+`$process_person_profile: false`. Pageviews follow History API changes so App
+Router navigation is captured without a blocking route hook.
+
+CSP allows connections to `https://*.sentry.io` and `https://*.posthog.com`.
+The full staging setup, alert rules, smoke tests, and incident procedures are in
+the [staging beta runbook](docs/STAGING_BETA_RUNBOOK.md).
+
 ## Route map
 
 | Route | Access |
@@ -258,10 +304,23 @@ account.
 
 ## Current blockers
 
+- Staging is not deployed: the Vercel CLI is logged out and no
+  `.vercel/project.json` exists.
+- Sentry and PostHog credentials are not configured locally, so real delivery
+  and alerting are unverified.
+- `DATABASE_URL` and `DATABASE_URL_DIRECT` are blank locally; the Drizzle scripts
+  need them.
 - Docker/psql are not installed; use a remote Supabase project for now.
 - The Sportmonks free plan covers only the Danish Superliga (`271`) and
   Scottish Premiership (`501`) with 180 requests/hour. Production coverage
-  needs a paid plan or a different provider token.
+  needs a paid plan or a different provider token. Rotate the token that was
+  exposed during setup.
+- The Odds API has no Nigerian league; `soccer_epl` is the default. Its free
+  plan cannot sustain the default cron cadence, and BTTS/Double Chance are not
+  in its bulk odds feed.
+- No permanent E2E test suite is checked in; smoke tests are manual.
+- The cleanup job is logged to `sync_runs` but not shown in the admin matches
+  screen.
 - Legal pages are beta placeholders and need Nigerian counsel review before a
   public launch.
 - **Patch Next.js 16.4.3 on Nov 3, 2026.** A security release is scheduled for
@@ -286,6 +345,52 @@ sync for admin tooling.
 
 `/api/cron/cleanup` runs daily at 03:00 UTC for expired rate-limit buckets and
 unverified profiles, and logs to `sync_runs` under the `cleanup` job.
+
+### The Odds API (optional)
+
+The Odds API is supported as a third provider. It is not selected automatically
+when Sportmonks or API-Football credentials are present. To use it explicitly:
+
+```bash
+FOOTBALL_PROVIDER=the-odds-api
+THE_ODDS_API_KEY=...
+THE_ODDS_API_SPORT_KEYS=soccer_epl
+```
+
+The adapter uses the credit-efficient endpoints:
+
+- `/v4/sports` and `/v4/sports/{sport}/events` — free; used for competitions and
+  scheduled fixtures.
+- `/v4/sports/{sport}/odds` — costs 1 credit per market per region. The adapter
+  requests `h2h` (1X2) and `totals` (O/U 2.5), so **2 credits per sport key per
+  odds-sync run**.
+- `/v4/sports/{sport}/scores?daysFrom=1` — 2 credits. One call is shared by the
+  live-score and result paths inside `syncLive`, so a live run costs **2 credits
+  per sport key**.
+
+**Market coverage:** The bulk `/odds` endpoint exposes 1X2 and O/U 2.5. The
+Odds API's `btts` and `double_chance` markets are per-event add-ons and are not
+requested by this adapter, so those two BetApp markets will be absent when The
+Odds API is the only provider. Use Sportmonks when full market coverage matters.
+
+**Credit budget:** The free plan is **500 credits/month**. With the default cron
+schedule (live every 2 minutes, odds every 10 minutes), one sport key costs
+roughly **1,700 credits/day (~52K/month)**. The 100K plan ($59/month) covers that
+schedule comfortably; the 20K plan ($30/month) needs slower live/odds intervals.
+The number of users does **not** change API usage — only cron frequency, the
+number of sport keys, and the number of regions do. A 100-user beta is fine on a
+paid plan; it is not viable on the free plan at the current sync cadence.
+
+Because the adapter shares one bulk `/odds` response across every fixture in a
+run, you can raise `ODDS_SYNC_MAX_FIXTURES` (for example to `40`) to cover a full
+slate without increasing the credit cost. That setting only limits how many
+catalog rows are processed per run. Leave it at `8` for Sportmonks on its free
+plan.
+
+The Odds API does not report halftime, postponed, or cancelled states, and its
+event/team IDs are provider-specific. Switching providers on an existing catalog
+creates new rows for future fixtures; old rows age out as they settle. Use a
+fresh staging database when comparing providers.
 
 ## Betting flow
 
@@ -381,13 +486,18 @@ select public.place_bet(
 rollback;
 ```
 
-For a UI smoke test, place a small bet as the seeded admin, verify My Bets and
-Wallet, then delete the bet's `wallet_transactions` row, delete the bet, and
-credit the stake back. The current admin wallet is **12,000** with no bets after
-cleanup.
+For a UI smoke test, use small stakes and accept the resulting ledger entries.
+If you need a clean staging ledger, reset the staging database rather than
+deleting individual ledger rows. The current admin wallet is **12,000** with no
+bets after cleanup.
 
 ## Next build
 
-1. Sentry/PostHog, error boundaries, and staging beta.
-2. Mobile viewport smoke test.
-3. Nigerian legal review and the Next.js security patch.
+1. Deploy staging and run the [beta runbook](docs/STAGING_BETA_RUNBOOK.md).
+2. Configure Sentry and PostHog, then verify alert delivery and the event
+   funnel with real credentials.
+3. Run the mobile viewport smoke test.
+4. Decide whether The Odds API is supplemental or primary, add a live key, and
+   verify its competitions, fixtures, odds, live scores, and final results.
+5. Apply the Next.js security patch scheduled for Nov 3, 2026.
+6. Complete Nigerian legal review before public launch.

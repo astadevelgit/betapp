@@ -4,6 +4,10 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import type { ActionState } from "@/lib/action-state";
+import {
+  captureAnonymousServerEvent,
+  captureServerEvent,
+} from "@/lib/analytics/server";
 import { consumeRateLimit, hashClientIp } from "@/lib/security/rate-limit";
 import {
   getSupabaseAdminClient,
@@ -80,7 +84,10 @@ async function addToWaitlist(email: string, source = "signup"): Promise<void> {
 
   if (error) {
     console.error("[waitlist] Could not add email", error.message);
+    return;
   }
+
+  await captureAnonymousServerEvent("waitlist_join", { source });
 }
 
 const WAITLIST_RATE_LIMIT = 5;
@@ -214,6 +221,13 @@ export async function signUpAction(
     };
   }
 
+  if (data.user) {
+    await captureServerEvent(data.user.id, "signup_completed", {
+      country,
+      email_confirmation_required: !data.session,
+    });
+  }
+
   // If email confirmation is disabled in Supabase, signup returns a session.
   if (data.session) {
     if (isSupabaseAdminConfigured() && data.user) {
@@ -263,7 +277,7 @@ export async function signInAction(
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("status")
+    .select("status, role")
     .eq("id", data.user.id)
     .maybeSingle();
 
@@ -286,6 +300,10 @@ export async function signInAction(
       console.error("[auth] Signup bonus grant failed", grantError.message);
     }
   }
+
+  await captureServerEvent(data.user.id, "login", {
+    role: profile?.role ?? "user",
+  });
 
   redirect(safeNextPath(parsed.data.next));
 }

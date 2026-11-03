@@ -72,6 +72,13 @@ export interface ProviderOdds {
 
 export interface OddsProvider {
   readonly name: string;
+  /**
+   * Market types this provider can supply from its normal sync path. Defaults
+   * to all four when omitted, so existing full-coverage providers are
+   * unaffected. Partial providers such as The Odds API declare their subset so
+   * odds sync does not keep treating missing markets as stale.
+   */
+  readonly supportedMarketTypes?: readonly ProviderMarketType[];
   getCompetitions(): Promise<ProviderCompetition[]>;
   getFixtures(params: {
     from: string;
@@ -84,10 +91,10 @@ export interface OddsProvider {
 }
 
 export class ProviderNotConfiguredError extends Error {
-  constructor() {
-    super(
-      "Football data provider is not configured. Add SPORTMONKS_API_TOKEN (or API_FOOTBALL_KEY) to .env.local.",
-    );
+  constructor(
+    message = "Football data provider is not configured. Add SPORTMONKS_API_TOKEN, API_FOOTBALL_KEY, or THE_ODDS_API_KEY to .env.local.",
+  ) {
+    super(message);
     this.name = "ProviderNotConfiguredError";
   }
 }

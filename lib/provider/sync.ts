@@ -142,10 +142,12 @@ export async function syncOdds(): Promise<SyncResult> {
     }
 
     const freshCutoff = now.getTime() - staleSeconds * 1000;
+    const requiredMarketTypes =
+      provider.supportedMarketTypes ?? ODDS_MARKET_TYPES;
     const candidates = (matches ?? [])
       .filter((match) => {
         const markets = Array.isArray(match.markets) ? match.markets : [];
-        const hasAllOpenMarkets = ODDS_MARKET_TYPES.every((type) =>
+        const hasAllOpenMarkets = requiredMarketTypes.every((type) =>
           markets.some(
             (market) => market.type === type && market.status === "open",
           ),

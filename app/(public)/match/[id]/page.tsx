@@ -5,6 +5,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Info, Radio } from "lucide-react";
 
+import { TrackEvent } from "@/components/analytics/analytics";
 import { LiveScore } from "@/components/matches/live-score";
 import { MarketPanel } from "@/components/matches/market-panel";
 import { TeamCrest } from "@/components/matches/team-crest";
@@ -50,6 +51,14 @@ async function MatchContent({
 
   return (
     <div className="mx-auto max-w-4xl">
+      <TrackEvent
+        event="match_viewed"
+        properties={{
+          matchId: match.id,
+          competition: match.competition.name,
+          status: match.status,
+        }}
+      />
       <Link
         href="/"
         className={cn(

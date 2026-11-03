@@ -562,8 +562,9 @@ Do not cut: atomic ledger, idempotency, RLS, auto-settlement tests, legal pages.
 
 ### Epic 2 — Catalog and provider
 - Sportmonks adapter; fixture/odds/live sync; `sync_runs`.
+- Optional API-Football and The Odds API adapters behind `FOOTBALL_PROVIDER`.
 - Lobby and match detail with real data.
-- **Done:** selected leagues render; live scores update; missing markets hide gracefully.
+- **Done:** selected leagues render; live scores update; missing markets hide gracefully. The Odds API covers 1X2 and O/U 2.5 from its bulk feed.
 
 ### Epic 3 — Betting engine
 - Bet slip store; `place_bet`; odds validation; idempotency.
@@ -586,11 +587,15 @@ Do not cut: atomic ledger, idempotency, RLS, auto-settlement tests, legal pages.
 
 ### Epic 7 — Observability and QA
 - Sentry; PostHog events; error boundaries; E2E.
-- **Done:** failures visible; core E2E green.
+- **Done:** client/server/edge Sentry, all error boundaries, source-map gating,
+  and the ten PostHog events are wired. A production build verified a hydrated
+  boundary with a real digest. Core flows were verified manually; a permanent
+  E2E suite is still pending.
 
 ### Epic 8 — Launch
 - Staging beta; production deploy; monitoring; runbook.
 - **Done:** 100 users invited; stable 7 days; settlement accuracy verified.
+- **Runbook:** `docs/STAGING_BETA_RUNBOOK.md`.
 
 ---
 

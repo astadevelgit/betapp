@@ -59,6 +59,6 @@ export async function GET(request: Request) {
       await finishSyncRun(admin, runId, "failed", 0, {}, error);
     }
 
-    return cronErrorResponse(error);
+    return cronErrorResponse(error, "cleanup");
   }
 }

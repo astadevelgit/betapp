@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withSentryConfig } from "@sentry/nextjs/config";
 
 const isDev = process.env.NODE_ENV === "development";
 
@@ -11,7 +12,7 @@ const contentSecurityPolicy = [
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' blob: data: https://media.api-sports.io https://cdn.sportmonks.com",
   "font-src 'self' data:",
-  `connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.ingest.sentry.io https://eu.i.posthog.com${isDev ? " ws://localhost:* ws://127.0.0.1:*" : ""}`,
+  `connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.sentry.io https://*.posthog.com${isDev ? " ws://localhost:* ws://127.0.0.1:*" : ""}`,
   "media-src 'self'",
   "object-src 'none'",
   "base-uri 'self'",
@@ -107,4 +108,20 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+const hasSentryUploadCredentials = Boolean(
+  process.env.SENTRY_AUTH_TOKEN &&
+    process.env.SENTRY_ORG &&
+    process.env.SENTRY_PROJECT,
+);
+
+export default withSentryConfig(nextConfig, {
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+  silent: !process.env.CI,
+  telemetry: false,
+  widenClientFileUpload: hasSentryUploadCredentials,
+  sourcemaps: {
+    disable: !hasSentryUploadCredentials,
+  },
+});

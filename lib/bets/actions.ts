@@ -2,6 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 
+import * as Sentry from "@sentry/nextjs";
+
+import { captureServerEvent } from "@/lib/analytics/server";
 import { getCurrentUser } from "@/lib/auth/session";
 import { consumeRateLimit } from "@/lib/security/rate-limit";
 import {
@@ -138,6 +141,10 @@ export async function placeBetAction(
     }
 
     if (!maintenanceError && maintenanceSetting?.value === true) {
+      void captureServerEvent(context.user.id, "bet_failed", {
+        code: "MAINTENANCE",
+      });
+
       return {
         ok: false,
         code: "MAINTENANCE",
@@ -153,6 +160,10 @@ export async function placeBetAction(
       );
 
       if (!rateLimit.allowed) {
+        void captureServerEvent(context.user.id, "bet_failed", {
+          code: "RATE_LIMITED",
+        });
+
         return {
           ok: false,
           code: "RATE_LIMITED",
@@ -183,6 +194,13 @@ export async function placeBetAction(
 
     if (error) {
       console.error("[bets] place_bet RPC failed", error.message);
+      Sentry.captureException(error, {
+        tags: { flow: "place_bet" },
+      });
+      void captureServerEvent(context.user.id, "bet_failed", {
+        code: "PLACEMENT_FAILED",
+      });
+
       return {
         ok: false,
         code: "PLACEMENT_FAILED",
@@ -193,10 +211,24 @@ export async function placeBetAction(
     const result = normalizeResponse(data);
 
     if (result.ok) {
+      await captureServerEvent(context.user.id, "bet_placed", {
+        betId: result.betId,
+        betType: payload.type,
+        stake: result.stake,
+        totalOdds: result.totalOdds,
+        potentialPayout: result.potentialPayout,
+        legCount: payload.legs.length,
+        duplicate: result.duplicate,
+      });
+
       revalidatePath("/");
       revalidatePath("/live");
       revalidatePath("/my-bets");
       revalidatePath("/wallet");
+    } else {
+      void captureServerEvent(context.user.id, "bet_failed", {
+        code: result.code,
+      });
     }
 
     return result;
@@ -205,6 +237,13 @@ export async function placeBetAction(
       "[bets] Unexpected placement error",
       error instanceof Error ? error.message : error,
     );
+    Sentry.captureException(error, {
+      tags: { flow: "place_bet" },
+    });
+    void captureServerEvent(context.user.id, "bet_failed", {
+      code: "PLACEMENT_FAILED",
+    });
+
     return {
       ok: false,
       code: "PLACEMENT_FAILED",

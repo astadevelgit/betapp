@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import type { ActionState } from "@/lib/action-state";
+import { captureServerEvent } from "@/lib/analytics/server";
 import { requireUser } from "@/lib/auth/session";
 import {
   getSupabaseAdminClient,
@@ -49,6 +50,11 @@ export async function claimDailyAction(): Promise<ActionState> {
           : "Could not claim your daily coins. Please try again.",
     };
   }
+
+  await captureServerEvent(user.id, "daily_claim", {
+    amount: result.amount ?? 0,
+    nextClaimDate: result.next_claim_date ?? null,
+  });
 
   revalidatePath("/wallet");
 

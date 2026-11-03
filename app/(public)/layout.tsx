@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { connection } from "next/server";
 
+import { AnalyticsIdentify } from "@/components/analytics/analytics";
 import { BetSlip } from "@/components/bets/bet-slip";
 import { BottomNav } from "@/components/layout/bottom-nav";
 import { SiteFooter } from "@/components/layout/site-footer";
@@ -20,10 +21,18 @@ async function PublicBetSlip() {
   const wallet = context ? await getWallet(context.user.id) : null;
 
   return (
-    <BetSlip
-      authenticated={Boolean(context)}
-      balance={wallet?.balance ?? null}
-    />
+    <>
+      {context ? (
+        <AnalyticsIdentify
+          distinctId={context.user.id}
+          role={context.profile.role}
+        />
+      ) : null}
+      <BetSlip
+        authenticated={Boolean(context)}
+        balance={wallet?.balance ?? null}
+      />
+    </>
   );
 }
 

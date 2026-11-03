@@ -1,5 +1,8 @@
 import "server-only";
 
+import * as Sentry from "@sentry/nextjs";
+
+import { captureServerEvent } from "@/lib/analytics/server";
 import type {
   CatalogMarketType,
   CatalogSelectionName,
@@ -13,6 +16,7 @@ const MAX_OPEN_BETS_SCAN = 1000;
 
 const SETTLE_BET_SELECT = `
   id,
+  user_id,
   legs:bet_legs (
     id,
     market:markets!bet_legs_market_id_fkey (type, line),
@@ -30,6 +34,7 @@ const SETTLE_BET_SELECT = `
 
 interface SettleBetRow {
   id: string;
+  user_id: string;
   legs: Array<{
     id: string;
     market: { type: CatalogMarketType; line: number | string | null } | null;
@@ -221,6 +226,12 @@ export async function settleFinishedBets(
         if (response.bet?.status === "won") won += 1;
         else if (response.bet?.status === "lost") lost += 1;
         else if (response.bet?.status === "void") voided += 1;
+
+        void captureServerEvent(bet.user_id, "bet_settled", {
+          betId: bet.id,
+          status: response.bet?.status ?? "unknown",
+          payout: Number(response.bet?.payout ?? 0),
+        });
       } catch (error) {
         failed += 1;
         failures.push({
@@ -241,6 +252,14 @@ export async function settleFinishedBets(
       voided,
       failures: failures.slice(0, 10),
     };
+
+    if (failed > 0) {
+      Sentry.captureMessage("Settlement completed with failed bets", {
+        level: "warning",
+        tags: { flow: "settle" },
+        extra: { failed, failures: failures.slice(0, 10) },
+      });
+    }
 
     await finishSyncRun(admin, runId, "success", settled, metadata);
 

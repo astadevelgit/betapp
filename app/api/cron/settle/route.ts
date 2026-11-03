@@ -14,6 +14,6 @@ export async function GET(request: Request) {
     const result = await settleFinishedBets();
     return Response.json({ ok: true, ...result });
   } catch (error) {
-    return cronErrorResponse(error);
+    return cronErrorResponse(error, "settle");
   }
 }

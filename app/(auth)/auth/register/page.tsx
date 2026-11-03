@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { AlertTriangle, Coins } from "lucide-react";
 
+import { TrackEvent } from "@/components/analytics/analytics";
 import { RegisterForm } from "@/components/auth/register-form";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
@@ -23,6 +24,7 @@ export const instant = false;
 export default function RegisterPage() {
   return (
     <Card className="border-border/80 bg-card/90 shadow-2xl shadow-black/20">
+      <TrackEvent event="signup_started" />
       <CardHeader className="gap-1.5">
         <div className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-brand">
           <Coins className="size-4" />

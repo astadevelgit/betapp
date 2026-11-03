@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { connection } from "next/server";
 
+import { AnalyticsIdentify } from "@/components/analytics/analytics";
 import { BetSlip } from "@/components/bets/bet-slip";
 import { BottomNav } from "@/components/layout/bottom-nav";
 import { SiteFooter } from "@/components/layout/site-footer";
@@ -21,6 +22,10 @@ async function AuthenticatedShell({
 
   return (
     <>
+      <AnalyticsIdentify
+        distinctId={context.user.id}
+        role={context.profile.role}
+      />
       <SiteHeader context={context} />
       <main className="page-shell flex-1 py-8 pb-28 md:pb-12">
         {children}

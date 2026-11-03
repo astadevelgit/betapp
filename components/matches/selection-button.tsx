@@ -3,6 +3,7 @@
 import { Check } from "lucide-react";
 import { toast } from "sonner";
 
+import { captureClientEvent } from "@/lib/analytics/client";
 import { formatOdds } from "@/lib/format";
 import { useBetSlipStore } from "@/lib/bets/store";
 import type { BetSlipLeg } from "@/lib/bets/types";
@@ -43,6 +44,16 @@ export function SelectionButton({
       }
       onClick={() => {
         const result = addLeg(leg);
+
+        if (result === "added" || result === "replaced") {
+          void captureClientEvent("bet_slip_add", {
+            matchId: leg.matchId,
+            marketId: leg.marketId,
+            selectionId: leg.selectionId,
+            odds: leg.odds,
+            result,
+          });
+        }
 
         if (result === "added") {
           toast.success(`${label} added`, {

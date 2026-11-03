@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ArrowLeft, LogOut } from "lucide-react";
 
 import { AdminNav } from "@/components/admin/admin-nav";
+import { AnalyticsIdentify } from "@/components/analytics/analytics";
 import { Logo } from "@/components/layout/logo";
 import { Button } from "@/components/ui/button";
 import { signOutAction } from "@/lib/auth/actions";
@@ -21,6 +22,10 @@ async function AdminShell({
 
   return (
     <div className="min-h-dvh">
+      <AnalyticsIdentify
+        distinctId={context.user.id}
+        role={context.profile.role}
+      />
       <div className="mx-auto flex min-h-dvh max-w-7xl">
         <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col border-r border-border/70 bg-sidebar p-4 md:flex">
           <Logo />
