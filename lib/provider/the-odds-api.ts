@@ -160,8 +160,8 @@ export class TheOddsApiProvider implements OddsProvider {
       const events = await this.request<TheOddsApiEvent>(
         `/sports/${encodeURIComponent(sportKey)}/events`,
         {
-          commenceTimeFrom: new Date(from).toISOString(),
-          commenceTimeTo: new Date(to).toISOString(),
+          commenceTimeFrom: toApiTimestamp(new Date(from)),
+          commenceTimeTo: toApiTimestamp(new Date(to)),
           dateFormat: "iso",
         },
       );
@@ -683,6 +683,12 @@ function startOfUtcDay(value: string): string {
 
 function endOfUtcDay(value: string): string {
   return `${startOfUtcDay(value)}T23:59:59.999Z`;
+}
+
+// The events endpoint rejects ISO timestamps with milliseconds. Its accepted
+// format is YYYY-MM-DDTHH:MM:SSZ.
+function toApiTimestamp(date: Date): string {
+  return `${date.toISOString().slice(0, 19)}Z`;
 }
 
 function normalizeSelection(value: string): string {
