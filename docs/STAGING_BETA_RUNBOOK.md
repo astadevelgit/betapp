@@ -41,7 +41,7 @@ but does not make a URL secret.
 | `min_stake` | 100 BET |
 | `max_stake` | 50,000 BET |
 | `max_payout` | 1,000,000 BET per bet |
-| `odds_stale_seconds` | 300 |
+| `odds_stale_seconds` | 900 (15-minute betting cutoff) |
 | `beta_cap` | 100 |
 
 Daily claims reset on the Africa/Lagos calendar day.
@@ -92,7 +92,9 @@ Apply every file in `supabase/migrations/` in numeric order, followed by
 `supabase/seed.sql`. Use the Supabase CLI or the SQL editor.
 
 The verified staging project has migrations through
-`20261102000006_security.sql`.
+`20261102000006_security.sql`. Apply `20261102000007_stale_odds.sql` before
+opening betting; it adds the atomic stale-odds guard to `place_bet`. Then apply
+`20261102000008_odds_cutoff.sql` to move the cutoff from 300 to 900 seconds.
 
 After applying, confirm:
 
@@ -116,7 +118,7 @@ order by routine_name;
 
 Expected economy values: `signup_bonus=10000`, `daily_claim=2000`,
 `min_stake=100`, `max_stake=50000`, `max_payout=1000000`, `beta_cap=100`,
-`beta_enabled=true`, `maintenance_mode=false`, `odds_stale_seconds=300`.
+`beta_enabled=true`, `maintenance_mode=false`, `odds_stale_seconds=900`.
 
 ### 3.3 Configure Auth
 
@@ -225,7 +227,7 @@ without `CRON_SECRET` and a provider key.
 | Job | Schedule | Purpose |
 |---|---|---|
 | `/api/cron/sync-live` | Every 2 minutes | Live scores and today's final results |
-| `/api/cron/sync-odds` | Every 10 minutes | Refresh stale pre-match odds |
+| `/api/cron/sync-odds` | Every 10 minutes | Refresh pre-match odds older than 5 minutes |
 | `/api/cron/sync-fixtures` | Every 6 hours | Next 7 days of fixtures |
 | `/api/cron/settle` | Every 5 minutes | Settle finished bets |
 | `/api/cron/cleanup` | Daily at 03:00 UTC | Expired rate limits and unverified signups |
@@ -247,9 +249,10 @@ Expected: `{ ok: true, job: "...", recordsProcessed: N, ... }`. A missing or
 wrong secret returns `401`; a missing `CRON_SECRET` returns `503`. Provider
 failures return `500` and are captured in Sentry with a `cron_job` tag.
 
-Check Admin → Matches for recent `sync_runs` and the latest fixture, live, and
-odds runs. The cleanup job writes `sync_runs` but is not currently shown on the
-matches screen; verify it from the Vercel cron log or a read-only SQL query.
+Check Admin → Matches for recent `sync_runs`: fixtures, live scores, odds,
+settlement, and cleanup. The cleanup card shows how many expired rate-limit
+buckets and unverified profiles were removed. Cross-check with the Vercel cron
+log or a read-only SQL query during incident review.
 
 ---
 
@@ -438,6 +441,10 @@ settlement, provider sync, or headers. Use a real inbox you control.
 - [ ] Stakes below 100 and above 50,000 are rejected.
 - [ ] A payout above 1,000,000 is capped.
 - [ ] A changed price opens the odds-change review dialog and does not debit.
+- [ ] Stale odds are rejected with `ODDS_STALE` and no debit. To test, set
+      `odds_stale_seconds = 30`, pause `sync-odds` for 30+ seconds, attempt a
+      bet, then restore the cutoff to 900 and re-enable the cron. The odds
+      refresh window stays fixed at 5 minutes.
 - [ ] Double-submitting the same slip does not create two bets.
 - [ ] The 11th placement attempt in one minute is rate-limited.
 - [ ] With `maintenance_mode = true`, new bets are blocked and existing bets
@@ -498,11 +505,13 @@ updating, Sentry shows `cron_job`.
 
 1. Confirm the provider status page and the API key/quota.
 2. Check `sync_runs` metadata and the Vercel cron log.
-3. If only odds are stale, keep betting open only if prices are acceptable;
-   otherwise pause with `maintenance_mode`.
+3. Once odds pass `odds_stale_seconds`, `place_bet` rejects new bets with
+   `ODDS_STALE` automatically. Do not raise the threshold to work around an
+   outage; use `maintenance_mode` if the whole provider is down.
 4. If fixtures cannot sync, do not manually invent matches. Wait for recovery or
    switch providers on a fresh staging catalog.
-5. Verify recovery with a manual `sync-fixtures`, `sync-odds`, and `sync-live`.
+5. Verify recovery with a manual `sync-fixtures`, `sync-odds`, and `sync-live`,
+   then confirm a test bet is accepted at fresh odds.
 
 ### Settlement failures
 
@@ -638,5 +647,4 @@ admin console or the existing RPCs.
 - Sportmonks free-plan coverage is limited to Denmark and Scotland.
 - The Odds API has no Nigerian league and its free plan cannot sustain the
   default cron cadence.
-- The cleanup job is logged but not shown in the admin matches screen.
 - Legal pages remain beta placeholders.

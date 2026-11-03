@@ -37,6 +37,7 @@ const JOB_LABELS: Record<string, string> = {
   "sync-live": "Live scores",
   "sync-odds": "Odds",
   settle: "Settlement",
+  cleanup: "Cleanup",
 };
 
 const MATCH_STATUS_STYLES: Record<
@@ -125,7 +126,7 @@ export default async function AdminMatchesPage({
       </div>
 
       {syncJobs.length > 0 ? (
-        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
           {syncJobs.map((job) => {
             const label = JOB_LABELS[job.job] ?? job.job;
             const metadataFailures = Array.isArray(job.metadata.failures)

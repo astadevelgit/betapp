@@ -133,6 +133,10 @@ npx supabase db query --linked --project-ref <your-project-ref> \
 npx supabase db query --linked --project-ref <your-project-ref> \
   --file supabase/migrations/20261102000006_security.sql --yes
 npx supabase db query --linked --project-ref <your-project-ref> \
+  --file supabase/migrations/20261102000007_stale_odds.sql --yes
+npx supabase db query --linked --project-ref <your-project-ref> \
+  --file supabase/migrations/20261102000008_odds_cutoff.sql --yes
+npx supabase db query --linked --project-ref <your-project-ref> \
   --file supabase/seed.sql --yes
 ```
 
@@ -145,7 +149,9 @@ Or paste these files into the Supabase SQL editor, in order:
 5. `supabase/migrations/20261102000004_settlement.sql`
 6. `supabase/migrations/20261102000005_admin.sql`
 7. `supabase/migrations/20261102000006_security.sql`
-8. `supabase/seed.sql`
+8. `supabase/migrations/20261102000007_stale_odds.sql`
+9. `supabase/migrations/20261102000008_odds_cutoff.sql`
+10. `supabase/seed.sql`
 
 The hosted CLI asks for explicit confirmation before write statements; pass
 `--yes` only after reviewing the file. Read-only checks can use `--read-only`
@@ -319,8 +325,6 @@ the [staging beta runbook](docs/STAGING_BETA_RUNBOOK.md).
   plan cannot sustain the default cron cadence, and BTTS/Double Chance are not
   in its bulk odds feed.
 - No permanent E2E test suite is checked in; smoke tests are manual.
-- The cleanup job is logged to `sync_runs` but not shown in the admin matches
-  screen.
 - Legal pages are beta placeholders and need Nigerian counsel review before a
   public launch.
 - **Patch Next.js 16.4.3 on Nov 3, 2026.** A security release is scheduled for
@@ -334,9 +338,15 @@ into Postgres, so the lobby and live polling never call Sportmonks directly.
 | Job | Schedule | Free-plan budget |
 |---|---|---|
 | `sync-live` | Every 2 minutes | In-play + today's results |
-| `sync-odds` | Every 10 minutes | Up to 8 fixtures |
+| `sync-odds` | Every 10 minutes | Up to 8 fixtures; refreshes markets older than 5 minutes |
 | `sync-fixtures` | Every 6 hours | Next 7 days |
 | `settle` | Every 5 minutes | No provider calls; final results already in Postgres |
+
+`sync-odds` uses a fixed 5-minute refresh window so each run picks up markets
+that were not refreshed recently, regardless of the betting cutoff. Betting is
+rejected only when a market is older than `odds_stale_seconds` (default **900
+seconds / 15 minutes**), so one missed 10-minute sync does not stop all betting.
+The cutoff is enforced atomically in `place_bet`.
 
 On the free plan this stays under the 180 requests/hour limit. Protect the
 routes with `Authorization: Bearer $CRON_SECRET`. The selected league IDs live
@@ -407,6 +417,9 @@ fresh staging database when comparing providers.
 5. `place_bet` locks the wallet and the catalog rows, re-checks every selection,
    and compares the expected odds with the current odds. If anything moved it
    returns `ODDS_CHANGED` with the current prices and does not debit the wallet.
+   If any market is older than `odds_stale_seconds` (default 900 seconds), it
+   returns `ODDS_STALE` and does not debit. This stops new risk during a provider
+   outage while allowing one missed 10-minute odds sync.
 6. On success the stake is debited once, a `bet_stake` ledger row is written,
    and the slip clears. Retrying the same submission key returns the original
    bet without a second debit.
@@ -455,8 +468,8 @@ The console is designed to operate the beta without SQL:
   adjustments, and suspend/restore.
 - **Transactions:** the read-only coin ledger with type, player, and date
   filters.
-- **Settings:** the economy grants, stake and payout limits, odds staleness,
-  beta cap/toggle, and maintenance mode.
+- **Settings:** the economy grants, stake and payout limits, the stale-odds
+  rejection threshold, beta cap/toggle, and maintenance mode.
 - **Audit log:** every admin mutation with before/after values and the reason.
 
 `admin_adjust_balance` is idempotent, rejects zero and over-limit adjustments,

@@ -20,7 +20,9 @@ export interface SyncResult {
 }
 
 const ODDS_MARKET_TYPES = ["1X2", "OU25", "BTTS", "DC"] as const;
-const DEFAULT_ODDS_STALE_SECONDS = 300;
+// Refresh window only. The betting cutoff is odds_stale_seconds and is enforced
+// atomically in place_bet, so a missed sync does not immediately stop betting.
+const ODDS_REFRESH_SECONDS = 300;
 const DEFAULT_MAX_ODDS_FIXTURES = 8;
 const FIXTURE_LOOKAHEAD_HOURS = 168;
 
@@ -113,11 +115,6 @@ export async function syncOdds(): Promise<SyncResult> {
   const runId = await startSyncRun(admin, "sync-odds");
 
   try {
-    const staleSeconds = await readNumberSetting(
-      admin,
-      "odds_stale_seconds",
-      DEFAULT_ODDS_STALE_SECONDS,
-    );
     const maxFixtures = readPositiveInt(
       process.env.ODDS_SYNC_MAX_FIXTURES,
       DEFAULT_MAX_ODDS_FIXTURES,
@@ -141,7 +138,7 @@ export async function syncOdds(): Promise<SyncResult> {
       throw new Error(`Could not load matches for odds sync: ${matchError.message}`);
     }
 
-    const freshCutoff = now.getTime() - staleSeconds * 1000;
+    const freshCutoff = now.getTime() - ODDS_REFRESH_SECONDS * 1000;
     const requiredMarketTypes =
       provider.supportedMarketTypes ?? ODDS_MARKET_TYPES;
     const candidates = (matches ?? [])
@@ -548,22 +545,6 @@ async function getFootballSportId(admin: AdminClient): Promise<string> {
 
   footballSportId = data.id;
   return data.id;
-}
-
-async function readNumberSetting(
-  admin: AdminClient,
-  key: string,
-  fallback: number,
-): Promise<number> {
-  const { data } = await admin
-    .from("app_settings")
-    .select("value")
-    .eq("key", key)
-    .maybeSingle();
-
-  const value = data?.value;
-  const parsed = typeof value === "number" ? value : Number(value);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 function readPositiveInt(value: string | undefined, fallback: number): number {

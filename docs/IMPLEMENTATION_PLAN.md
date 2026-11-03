@@ -305,7 +305,7 @@ interface OddsProvider {
 | Job | Schedule | Work |
 |---|---|---|
 | `sync-fixtures` | Every 6 hours | Upcoming fixtures for selected leagues (next 7 days); upsert competitions, teams, matches |
-| `sync-odds` | Every 10 minutes | Pre-match odds for up to 8 upcoming matches; upsert markets/selections; skip fresh data |
+| `sync-odds` | Every 10 minutes | Pre-match odds for up to 8 upcoming matches; refresh markets older than 5 minutes; upsert markets/selections |
 | `sync-live` | Every 2 minutes | Live fixtures/scores/status/periods; update matches; flag finished |
 | `settle` | Every 5 minutes | Settle open bets on finished matches |
 | `cleanup` | Daily | Purge unverified profiles >24h; prune old sync logs |
@@ -329,7 +329,7 @@ interface OddsProvider {
 
 - All provider calls are server-only; key never reaches the client.
 - Log every run to `sync_runs`; capture failures in Sentry.
-- If odds are stale >5 minutes, suspend new bets on affected matches.
+- If any market is older than `odds_stale_seconds` (default 15 minutes), reject new bets with `ODDS_STALE`. The 5-minute refresh window is separate so one missed 10-minute sync does not stop betting.
 - If the provider is down, serve cached DB data and show "live updates delayed."
 - Use `FOR UPDATE SKIP LOCKED` for settlement to avoid double processing.
 - Add a `CRON_SECRET` check to every cron route.

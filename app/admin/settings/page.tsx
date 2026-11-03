@@ -74,7 +74,7 @@ export default async function AdminSettingsPage() {
     max_stake: readNumber(rows, "max_stake", 50_000),
     max_payout: readNumber(rows, "max_payout", 1_000_000),
     beta_cap: readNumber(rows, "beta_cap", 100),
-    odds_stale_seconds: readNumber(rows, "odds_stale_seconds", 300),
+    odds_stale_seconds: readNumber(rows, "odds_stale_seconds", 900),
     beta_enabled: readBoolean(rows, "beta_enabled", true),
     maintenance_mode: readBoolean(rows, "maintenance_mode", false),
   };

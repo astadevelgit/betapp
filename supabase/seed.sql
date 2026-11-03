@@ -14,7 +14,7 @@ values
   ('beta_cap', '100'::jsonb, 'Maximum active profiles in the private beta'),
   ('beta_enabled', 'true'::jsonb, 'When false, new signups go to the waitlist'),
   ('maintenance_mode', 'false'::jsonb, 'When true, betting mutations are paused'),
-  ('odds_stale_seconds', '300'::jsonb, 'Suspend betting if odds are older than this'),
+  ('odds_stale_seconds', '900'::jsonb, 'Reject new bets when odds are older than this (betting cutoff)'),
   ('claim_timezone', '"Africa/Lagos"'::jsonb, 'Daily claim reset timezone')
 on conflict (key) do update
 set value = excluded.value,

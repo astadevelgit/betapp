@@ -251,12 +251,12 @@ export function AdminSettingsForm({
           />
           <NumberField
             id="setting-odds-stale"
-            label="Odds staleness (seconds)"
+            label="Betting odds cutoff (seconds)"
             value={values.odds_stale_seconds}
             onChange={(value) => setNumber("odds_stale_seconds", value)}
             min={30}
             max={3600}
-            hint="The odds sync skips markets refreshed inside this window."
+            hint="New bets are rejected when any market is older than this. Odds sync refreshes on a separate fixed 5-minute window."
           />
         </div>
       </section>

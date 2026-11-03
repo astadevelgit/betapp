@@ -621,7 +621,13 @@ interface SyncJobDbRow {
   metadata: Record<string, unknown> | null;
 }
 
-const SYNC_JOB_ORDER = ["sync-fixtures", "sync-live", "sync-odds", "settle"];
+const SYNC_JOB_ORDER = [
+  "sync-fixtures",
+  "sync-live",
+  "sync-odds",
+  "settle",
+  "cleanup",
+];
 
 export async function getSyncJobStatus(): Promise<SyncJobStatus[]> {
   const admin = getSupabaseAdminClient();
