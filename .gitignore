@@ -47,3 +47,6 @@ supabase/.branches
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# unrelated local project
+a-website-for-my-bakery/
