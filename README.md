@@ -4,7 +4,9 @@ A closed-loop, play-money football prediction game for a Nigeria-focused private
 
 BET coins have no cash value. No purchases, cash-out, prizes, or real-money wagers. 18+.
 
-<!-- Screenshot: add docs/screenshot.png and reference it here before publishing. -->
+**Demo login:** `demo@betapp.app` / `BetApp-Demo-2026` — play-money wallet, seeded with 10,000 BET. No email confirmation needed.
+
+![BetApp lobby with live fixtures and odds](docs/screenshot.png)
 
 ## What it does
 
@@ -82,7 +84,6 @@ Full setup, provider configuration, cron jobs, and staging runbook: [`docs/INTER
 ## Roadmap
 
 - Playwright end-to-end coverage for bet placement and settlement.
-- Seeded demo account and catalog so reviewers can open the app without signing up.
 - Pro cron schedule for automatic sync and settlement on staging.
 - Sentry and PostHog credentials, with alert delivery verified.
 - Mobile viewport pass.
