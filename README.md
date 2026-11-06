@@ -33,7 +33,7 @@ Next.js 16.4 (App Router, Cache Components, Server Actions) · React 19.3 · Typ
 | Beta cap serialized: two concurrent signups cannot exceed the cap | Two-session test; `handle_new_user` takes an advisory lock before counting |
 | Physical cleanup job works | One expired rate-limit bucket and one stale unverified account removed in the verified run |
 | Lint and typecheck clean | `npm run check` |
-| 15 commits · 9 SQL migrations · 17 tables · 14 Postgres functions · 12 RLS policies | Repository |
+| 9 SQL migrations · 17 tables · 14 Postgres functions · 12 RLS policies | Repository |
 
 No automated end-to-end suite is checked in yet. The checks above were manual and, where they touched money, run inside rolled-back SQL transactions. A Playwright suite around placement and settlement is the next change.
 
